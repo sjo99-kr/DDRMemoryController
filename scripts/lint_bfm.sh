@@ -51,6 +51,7 @@ printf "%bINFO:%b Memory Controller Lint START\n" "$Blue" "$NC"
 # Run lint from RTL root
 #   - Required so that relative paths in filelist.f are resolved correctly
 # ------------------------------------------------------------------------------
+
 cd "$PROJECT_ROOT"
 
 # ------------------------------------------------------------------------------
@@ -74,7 +75,7 @@ if ! "$VERILATOR_PATH" --lint-only +1800-2017ext+sv \
     -Wno-WIDTHTRUNC \
     -Wno-UNDRIVEN \
     -I"$BFM_PATH" \
-    -I"$RTL_PATH/common" \
+    -I"$RTL_PATH/common/" \
     -f "$SCRIPT_DIR/lint_bfm_filelist.f" \
     --top-module MemoryBFM \
     2> "$LOG_FILE"; then

@@ -59,7 +59,7 @@ module MemoryBFM#(
 );
 
     `ifdef VERILATOR
-    import MemoryController_Definitions::*;
+        import MemoryController_Definitions::*;
     `endif
 
     `ifdef VERILATOR
