@@ -22,13 +22,13 @@
 //      Author  : Seongwon Jo
 //      Created : 2026.02
 //////////////////////////////////////////////////////////////////////////////////////////
-`include "MemoryController_Definitions.sv"
-
+import MemoryController_Definitions::*;
 interface DDR4Interface(
         /* verilator lint_off UNUSEDSIGNAL */
 
 	input logic clk, rst
 );
+
 
 
 

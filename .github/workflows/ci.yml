@@ -18,7 +18,14 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install verilator yosys
+          sudo apt install verilator
+      - name: Install Yosys latest
+        run: |
+          git clone https://github.com/YosysHQ/yosys.git
+          cd yosys
+          make -j$(nproc)
+          sudo make install
+
 
       - name: Check Verilator Version
         run: verilator --version
