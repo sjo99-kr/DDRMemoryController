@@ -205,7 +205,8 @@ module WriteBufferController #(
             writeDirFree   <= '1;
             writeDirIssued <= '0;
             for(int i = 0; i < WRITEBUFFERDEPTH; i++) begin
-                writeBuffer_dirMEM[i] <= '0;
+                /* verilator lint_off BLKSEQ */
+                writeBuffer_dirMEM[i] = '0;
             end
         end else begin
             if(writeBufferAllocValid) begin                         // Write Request Issued signals come from "RankFSM"            (UPDATE)
