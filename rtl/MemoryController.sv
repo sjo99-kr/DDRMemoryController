@@ -51,6 +51,8 @@
 `ifndef VERILATOR
 import MemoryController_Definitions::*;
 `endif
+
+
 import MemoryController_Definitions::*;
 
 module MemoryController#(
