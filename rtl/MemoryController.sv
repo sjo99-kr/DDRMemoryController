@@ -51,6 +51,7 @@
 `ifndef VERILATOR
 import MemoryController_Definitions::*;
 `endif
+import MemoryController_Definitions::*;
 
 module MemoryController#(
     parameter int AXI_DATAWIDTH = 64,
@@ -123,7 +124,7 @@ module MemoryController#(
     `endif
     );
 
-    `ifdef VERILATOR
+    `ifndef VERILATOR
     import MemoryController_Definitions::*;
     `endif
 

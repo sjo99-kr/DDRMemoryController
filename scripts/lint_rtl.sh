@@ -57,7 +57,7 @@ printf "%bINFO:%b Memory Controller Lint START\n" "$Blue" "$NC"
 #
 # These warnings are expected by design and do not indicate functional issues.
 # ------------------------------------------------------------------------------
-if ! "$VERILATOR_PATH" --lint-only -DVERILATOR +1800-2017ext+sv \
+if ! "$VERILATOR_PATH" --lint-only +1800-2017ext+sv \
     -Wall -Wpedantic \
     -Wno-WIDTHEXPAND \
     -Wno-UNUSEDPARAM \
