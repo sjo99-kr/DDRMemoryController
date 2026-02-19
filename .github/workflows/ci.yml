@@ -20,19 +20,26 @@ jobs:
           sudo apt update
           sudo apt install -y  yosys
 
-      - name: Install Verilator (develop)
-        run: |
-          sudo apt install -y git make autoconf g++ flex bison
-          git clone https://github.com/verilator/verilator
-          cd verilator
-          autoconf
-          ./configure
-          make -j$(nproc)
-          sudo make install
+          - name: Install Verilator 5.045 (exact local version)
+          run: |
+            sudo apt update
+            sudo apt install -y git make autoconf g++ flex bison libfl-dev
+        
+            git clone https://github.com/verilator/verilator.git
+            cd verilator
+        
+            git checkout 1dd80996c
+        
+            autoconf
+            ./configure
+            make -j$(nproc)
+            sudo make install
+        
+            verilator --version
 
       - name: Check Verilator Version
         run: verilator --version
-        
+
       - name: Run Verilator Lint
         run: |
           chmod +x scripts/lint_rtl.sh
