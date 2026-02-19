@@ -1,0 +1,28 @@
+name: RTL CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-synth:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y verilator yosys
+
+      - name: Run Verilator Lint
+        run: |
+          chmod +x scripts/run_lint.sh
+          ./scripts/run_lint.sh
+
+      - name: Run Yosys Synthesis
+        run: |
+          chmod +x scripts/run_yosys.sh
+          ./scripts/run_yosys.sh
