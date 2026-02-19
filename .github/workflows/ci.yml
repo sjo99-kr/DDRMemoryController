@@ -20,13 +20,7 @@ jobs:
           sudo apt update
           sudo apt install -y verilator yosys
         
-      - name: Print lint logs if exist
-        if: always()
-        run: |
-            echo "---- RTL LINT LOG ----"
-            cat scripts/lint_rtl.log || true
-            echo "---- BFM LINT LOG ----"
-            cat scripts/lint_bfm.log || true
+
 
       - name: Run Verilator Lint
         run: |
@@ -34,7 +28,15 @@ jobs:
           ./scripts/lint_rtl.sh             
           chmod +x scripts/lint_bfm.sh
           ./scripts/lint_bfm.sh
-
+        
+      - name: Print lint logs if exist
+        if: always()
+        run: |
+            echo "---- RTL LINT LOG ----"
+            cat scripts/lint_rtl.log || true
+            echo "---- BFM LINT LOG ----"
+            cat scripts/lint_bfm.log || true
+            
       - name: Run Yosys Synthesis
         run: |
           chmod +x scripts/syn_nangate45.sh
