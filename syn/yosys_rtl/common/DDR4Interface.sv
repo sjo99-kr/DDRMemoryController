@@ -22,7 +22,7 @@
 //      Author  : Seongwon Jo
 //      Created : 2026.02
 //////////////////////////////////////////////////////////////////////////////////////////
-import MemoryController_Definitions::*;
+`include "MemoryController_Definitions.sv"
 
 interface DDR4Interface(
         /* verilator lint_off UNUSEDSIGNAL */
