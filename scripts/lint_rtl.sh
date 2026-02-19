@@ -33,7 +33,8 @@ VERILATOR_PATH=$(command -v verilator)
 #   - LOG_FILE   : lint output log
 # ------------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RTL_PATH="$(cd "$SCRIPT_DIR/../rtl" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RTL_PATH="$PROJECT_ROOT/rtl"
 LOG_FILE="$SCRIPT_DIR/lint_rtl.log"
 
 if [ ! -d "$RTL_PATH" ]; then
@@ -44,11 +45,6 @@ fi
 printf "%bINFO:%b Verilator found at %s\n" "$Blue" "$NC" "$VERILATOR_PATH"
 printf "%bINFO:%b Memory Controller Lint START\n" "$Blue" "$NC"
 
-# ------------------------------------------------------------------------------
-# Run lint from RTL root
-#   - Required so that relative paths in filelist.f are resolved correctly
-# ------------------------------------------------------------------------------
-cd "$RTL_PATH"
 
 # ------------------------------------------------------------------------------
 # Lint policy note:
@@ -67,11 +63,11 @@ if ! "$VERILATOR_PATH" --lint-only +1800-2017ext+sv \
     -Wno-UNUSEDPARAM \
     -Wno-UNUSEDSIGNAL \
     -Wno-WIDTHTRUNC \
-    -I. \
-    -I"./common" \
-    -I"./backend" \
-    -I"./frontend" \
-    -f "../scripts/lint_rtl_filelist.f" \
+    -I"$RTL_PATH" \
+    -I"$RTL_PATH/common" \
+    -I"$RTL_PATH/backend" \
+    -I"$RTL_PATH/frontend" \
+    -f "$SCRIPT_DIR/lint_rtl_filelist.f" \
     --top-module MemoryController \
     2> "$LOG_FILE"; then
   printf "%bERROR:%b Lint failed. See %s\n" "$Red" "$NC" "$LOG_FILE"

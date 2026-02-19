@@ -33,6 +33,8 @@ VERILATOR_PATH=$(command -v verilator)
 #   - LOG_FILE   : lint output log
 # ------------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 BFM_PATH="$(cd "$SCRIPT_DIR/../bfm" && pwd)"
 RTL_PATH="$(cd "$SCRIPT_DIR/../rtl" && pwd)"
 LOG_FILE="$SCRIPT_DIR/lint_bfm.log"
@@ -49,7 +51,7 @@ printf "%bINFO:%b Memory Controller Lint START\n" "$Blue" "$NC"
 # Run lint from RTL root
 #   - Required so that relative paths in filelist.f are resolved correctly
 # ------------------------------------------------------------------------------
-cd "$BFM_PATH"
+cd "$PROJECT_ROOT"
 
 # ------------------------------------------------------------------------------
 # Lint policy note:
@@ -71,9 +73,9 @@ if ! "$VERILATOR_PATH" --lint-only +1800-2017ext+sv \
     -Wno-UNUSEDSIGNAL \
     -Wno-WIDTHTRUNC \
     -Wno-UNDRIVEN \
-    -I. \
+    -I"$BFM_PATH" \
     -I"$RTL_PATH/common" \
-    -f "../scripts/lint_bfm_filelist.f" \
+    -f "$SCRIPT_DIR/lint_bfm_filelist.f" \
     --top-module MemoryBFM \
     2> "$LOG_FILE"; then
   printf "%bERROR:%b Lint failed. See %s\n" "$Red" "$NC" "$LOG_FILE"

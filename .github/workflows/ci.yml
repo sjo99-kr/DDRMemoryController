@@ -12,6 +12,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Show directory structure
+        run: tree -L 2
+
       - name: Install tools
         run: |
           sudo apt update
