@@ -79,6 +79,7 @@ if ! "$VERILATOR_PATH" --lint-only +1800-2017ext+sv \
     --top-module MemoryBFM \
     2> "$LOG_FILE"; then
   printf "%bERROR:%b Lint failed. See %s\n" "$Red" "$NC" "$LOG_FILE"
+  exit 1;
 else 
   rm $LOG_FILE
   printf "%bINFO:%b Lint Succeeded! Check %s\n" "$Blue" "$NC" "$LOG_FILE"

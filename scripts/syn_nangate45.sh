@@ -10,7 +10,6 @@ Blue='\033[0;34m'
 NC='\033[0m'
 
 
-DESIGN="./syn_nangate45.ys"
 
 
 # ------------------------------------------------------------------------------
@@ -32,7 +31,8 @@ printf "%bINFO%b: %s\n" "$Blue" "$NC" "$YOSYS_VERSION"
 # ------------------------------------------------------------------------------
 printf "%bINFO%b: MEMORY CONTROLLER SYNTHESIS START\n" "$Blue" "$NC"
 
+cd "$(dirname "$0")"
 
-yosys $DESIGN
+yosys -s syn_nangate45.ys
 
 printf "%bINFO%b: SYNTHESIS DONE\n" "$Blue" "$NC"
