@@ -18,7 +18,18 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install -y verilator yosys
+          sudo apt install -y  yosys
+
+      - name: Install Verilator (latest)
+        run: |
+          sudo apt install -y git make autoconf g++ flex bison
+          git clone https://github.com/verilator/verilator
+          cd verilator
+          git checkout v5.045
+          autoconf
+          ./configure
+          make -j$(nproc)
+          sudo make install
         
 
 
