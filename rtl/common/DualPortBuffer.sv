@@ -57,7 +57,7 @@ module DualPortBuffer #(
     always_ff @(posedge clk or negedge rst) begin
         if (!rst) begin
             for (int i = 0; i < BufferDepth; i++) begin
-                mem[i] <= '0;
+                mem[i] = '0;
             end
         end else if (we) begin
             mem[writePtr] <= wdata;
