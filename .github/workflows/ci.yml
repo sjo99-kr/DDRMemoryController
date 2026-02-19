@@ -19,10 +19,12 @@ jobs:
 
       - name: Run Verilator Lint
         run: |
-          chmod +x scripts/run_lint.sh
-          ./scripts/run_lint.sh
+          chmod +x scripts/lint_rtl.sh
+          ./scripts/lint_rtl.sh             
+          chmod +x scripts/lint_bfm.sh
+          ./scripts/lint_bfm.sh
 
       - name: Run Yosys Synthesis
         run: |
           chmod +x scripts/run_yosys.sh
-          ./scripts/run_yosys.sh
+          ./scripts/syn_nangate45.sh
