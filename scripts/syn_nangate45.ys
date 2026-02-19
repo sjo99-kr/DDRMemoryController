@@ -1,0 +1,57 @@
+# Read Design Moduels
+read -sv2012 ../syn/yosys_rtl/common/MemoryController_Definitions.sv
+read -sv2012 ../syn/yosys_rtl/common/DDR4Interface.sv
+read -sv2012 ../syn/yosys_rtl/common/DualPortBuffer.sv
+read -sv2012 ../syn/yosys_rtl/common/DRAMTimingCounter.sv
+read -sv2012 ../syn/yosys_rtl/common/priority_ptr_WriteBuf.sv
+read -sv2012 ../syn/yosys_rtl/common/PriorityEncoder_LSB.sv
+read -sv2012 ../syn/yosys_rtl/frontend/AddressTranslationUnit.sv
+read -sv2012 ../syn/yosys_rtl/frontend/MemoryControllerFrontend.sv
+read -sv2012 ../syn/yosys_rtl/backend/APTimingCounter.sv
+read -sv2012 ../syn/yosys_rtl/backend/CMDGrantScheduler.sv
+read -sv2012 ../syn/yosys_rtl/backend/CMDTurnaroundGrant.sv
+read -sv2012 ../syn/yosys_rtl/backend/DQRdWrCCDGrant.sv
+read -sv2012 ../syn/yosys_rtl/backend/DQTurnaroundGrant.sv
+read -sv2012 ../syn/yosys_rtl/backend/PHYWriteMode.sv
+read -sv2012 ../syn/yosys_rtl/backend/PHYReadMode.sv
+read -sv2012 ../syn/yosys_rtl/backend/PHYController.sv
+read -sv2012 ../syn/yosys_rtl/backend/RankFSM.sv
+read -sv2012 ../syn/yosys_rtl/backend/RankSched.sv
+read -sv2012 ../syn/yosys_rtl/backend/RankController.sv
+read -sv2012 ../syn/yosys_rtl/backend/ReadBufferController.sv
+read -sv2012 ../syn/yosys_rtl/backend/WriteBufferController.sv
+read -sv2012 ../syn/yosys_rtl/backend/ChannelController.sv
+read -sv2012 ../syn/yosys_rtl/backend/MemoryControllerBackend.sv
+read -sv2012 ../syn/yosys_rtl/MemoryController.sv
+
+
+
+## Synthesize Modules
+synth -top MemoryController
+
+## Convert design to gate-level netlists
+## +/adff2dff.v convert async reset to sync reset, used to mapp FFD correctly
+## Normalize FFs
+techmap +/adff2dff.v
+opt
+
+## Clean FF structures
+dffunmap
+opt
+
+
+## Map internal register types to the ones from the cell library
+dfflibmap -liberty NangateOpenCellLibrary_typical.lib
+
+## Map combinational logic
+abc -D 1000 -liberty NangateOpenCellLibrary_typical.lib
+
+## Cleanup
+opt
+opt_clean
+
+
+## Write synthsized design
+write_verilog -noattr -noexpr MemoryController_gate_nangate45.v
+
+stat -liberty NangateOpenCellLibrary_typical.lib
