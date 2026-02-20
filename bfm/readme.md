@@ -96,8 +96,6 @@ Read/Write → (AutoPrecharge) → Precharge
 | tRP  | ✅ |
 | tRFC | ✅ |
 
-Timing is enforced via a dedicated `DRAMTimingCounter` in each "MemoryBankFSM" module.
-
 ---
 
 ## 🔄 Multi-Clock Behavior
