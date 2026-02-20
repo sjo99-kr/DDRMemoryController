@@ -12,7 +12,7 @@ command-level timing enforcement and burst-level data transfers.
 
 ## 📐 System Overview
 <p align="center">
-<img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/3e0d4e60-2e5d-4277-a01c-cb80f499e431" />
+<img width="640" height="400" alt="image" src="https://github.com/user-attachments/assets/3e0d4e60-2e5d-4277-a01c-cb80f499e431" />
 </p>
 
 
