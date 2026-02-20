@@ -35,7 +35,7 @@ MemoryBFM
 ## 🧱 Module Structure
 
 ### 1️⃣ MemoryBFM
-Top-level structural wrapper.
+**Top-level structural wrapper.**
 
 - Instantiates multiple memory channels
 - No timing logic
@@ -44,18 +44,18 @@ Top-level structural wrapper.
 ---
 
 ### 2️⃣ MemoryChannel
-Channel-level DDR4 model.
+**Channel-level DDR4 model.**
 
 Responsibilities:
 - Broadcast CA/ADDR signals to all ranks
 - Generate channel-level DQS during read bursts
-- Perform rank-level DQ arbitration
+- Perform rank-level DQ arbitration based on cs_n and tCL
 - Model tri-state bidirectional DQ bus behavior
 
 ---
 
 ### 3️⃣ MemoryRank
-Rank-level behavioral model.
+**Rank-level behavioral model.**
 
 Responsibilities:
 - Decode BG/BK fields
@@ -69,7 +69,7 @@ At most one bank drives DQ at a time.
 ---
 
 ### 4️⃣ MemoryBankFSM
-Bank-level DDR behavioral FSM.
+**Bank-level DDR behavioral FSM.**
 
 Responsibilities:
 - Decode ACT / READ / WRITE / PRE / REF commands
