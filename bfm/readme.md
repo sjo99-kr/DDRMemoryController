@@ -1,7 +1,9 @@
 # DDR4 Memory BFM
 
-This directory contains a cycle-accurate DDR4 Bus Functional Model (BFM)
-used to verify and validate the custom multi-channel DDR4 memory controller.
+This directory contains a cycle-accurate DDR-SDRAM Bus Functional Model (BFM)
+used to verify and validate the custom multi-channel DDR-SDRAM memory controller.
+
+(Timing parameters are based on DDR4-2400, but can be reconfigured to support other DDR4 speeds or future DDR generations.)
 
 The BFM models channel, rank, and bank-level DRAM behavior with
 command-level timing enforcement and burst-level data transfers.
@@ -14,12 +16,13 @@ command-level timing enforcement and burst-level data transfers.
 </p>
 
 
-The Memory Controller connects to multiple DDR4 channels.
+The Memory Controller connects to multiple DDR4 channels (normally 2 or 3 for DDR4-SDRAM).
 Each channel contains multiple independent ranks, and each rank
 is composed of multiple bank-level FSMs.
 
-Hierarchical structure:
+**In this BFM implementation, each DIMM is modeled as one rank for structural simplicity.**
 
+**Hierarchical structure:**
 MemoryBFM  
  └── MemoryChannel (per channel)  
       └── MemoryRank (per rank)  
@@ -64,7 +67,7 @@ At most one bank drives DQ at a time.
 ---
 
 ### 4️⃣ MemoryBankFSM
-Bank-level DDR4 behavioral FSM.
+Bank-level DDR behavioral FSM.
 
 Responsibilities:
 - Decode ACT / READ / WRITE / PRE / REF commands
@@ -73,7 +76,7 @@ Responsibilities:
 - Generate burst-level data (clk2x domain)
 - Support auto-precharge behavior
 
-State transitions:
+**State transitions:**
 
 rowClosed → Activate → rowOpened  
 rowOpened → Read / Write / Precharge  
@@ -91,17 +94,14 @@ Read/Write → (AutoPrecharge) → Precharge
 | tRP  | ✅ |
 | tRFC | ✅ |
 
-Timing is enforced via a dedicated `DRAMTimingCounter`
-separated from FSM logic.
+Timing is enforced via a dedicated `DRAMTimingCounter` in each "MemoryBankFSM" module.
 
 ---
 
 ## 🔄 Multi-Clock Behavior
 
 - `clk` : Command decoding and state transitions
-- `clk2x` : Burst-level data transfer
-
-This allows realistic DDR burst modeling.
+- `clk2x` : Operates at double frequency to model DDR burst data timing. This allows realistic DDR burst modeling.
 
 ---
 
@@ -121,19 +121,10 @@ Tri-state bidirectional buses.
 
 - Integrated with custom DDR4 Memory Controller RTL
 - Multi-channel simulation validated
-- Lint-clean under Verilator
-- Tested with Vivado simulator
+- Lint-clean under Verilator (Check the "script" folder)
+- Tested with Vivado simulator (XSIM)
 
 ---
 
-## 🚀 Future Extensions
-
-- tCCD / tRRD / tFAW modeling
-- Full row-address-aware memory array
-- Assertion-based conflict checking
-- Coverage instrumentation
-
----
-
-This BFM is intended for architectural validation,
+This BFM is intended for architectural validation, DRAM Timing verification
 memory controller verification, and multi-channel DDR experimentation.
