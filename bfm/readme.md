@@ -122,7 +122,7 @@ Tri-state bidirectional buses.
 - Integrated with custom DDR4 Memory Controller RTL
 - Multi-channel simulation validated
 - Lint-clean under Verilator (Check the "script" folder)
-- Tested with Vivado simulator (XSIM)
+- Tested with Vivado-XSIM (Check the "script" folder)
 
 ---
 
