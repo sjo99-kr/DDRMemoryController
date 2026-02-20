@@ -24,11 +24,12 @@ is composed of multiple bank-level FSMs.
 
 **Hierarchical structure:**
 
-MemoryBFM  
- └── MemoryChannel (per channel)  
-      └── MemoryRank (per rank)  
-           └── MemoryBankFSM (per bank)  
-
+```text
+MemoryBFM
+ └── MemoryChannel (per channel)
+      └── MemoryRank (per rank)
+           └── MemoryBankFSM (per bank)
+```
 ---
 
 ## 🧱 Module Structure
