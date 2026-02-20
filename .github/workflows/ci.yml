@@ -1,4 +1,4 @@
-name: RTL CI
+name: RTL LINT
 
 on:
   push:
