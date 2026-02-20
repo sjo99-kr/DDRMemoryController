@@ -3,7 +3,7 @@
 This directory contains a cycle-accurate DDR-SDRAM Bus Functional Model (BFM)
 used to verify and validate the custom multi-channel DDR-SDRAM memory controller.
 
-(Timing parameters are based on DDR4-2400, but can be reconfigured to support other DDR4 speeds or future DDR generations.)
+**(Timing parameters are based on DDR4-2400, but can be reconfigured to support other DDR4 speeds or future DDR generations.)**
 
 The BFM models channel, rank, and bank-level DRAM behavior with
 command-level timing enforcement and burst-level data transfers.
@@ -23,6 +23,7 @@ is composed of multiple bank-level FSMs.
 **In this BFM implementation, each DIMM is modeled as one rank for structural simplicity.**
 
 **Hierarchical structure:**
+
 MemoryBFM  
  └── MemoryChannel (per channel)  
       └── MemoryRank (per rank)  
