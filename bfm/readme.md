@@ -9,8 +9,9 @@ command-level timing enforcement and burst-level data transfers.
 ---
 
 ## 📐 System Overview
+<img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/3e0d4e60-2e5d-4277-a01c-cb80f499e431" />
 
-<img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/ecd9868f-734f-4b37-a9f3-e33b72b393c2" />
+
 
 
 The Memory Controller connects to multiple DDR4 channels.
