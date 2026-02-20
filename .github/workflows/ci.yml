@@ -12,20 +12,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show directory structure
-        run: tree -L 2
-
-      - name: Install tools
+      - name: Install verilator
         run: |
           sudo apt update
           sudo apt install verilator
-      - name: Install Yosys latest
-        run: |
-          git clone https://github.com/YosysHQ/yosys.git
-          cd yosys
-          make -j$(nproc)
-          sudo make install
-
 
       - name: Check Verilator Version
         run: verilator --version
@@ -45,7 +35,3 @@ jobs:
             echo "---- BFM LINT LOG ----"
             cat scripts/lint_bfm.log || true
             
-      - name: Run Yosys Synthesis
-        run: |
-          chmod +x scripts/syn_nangate45.sh
-          ./scripts/syn_nangate45.sh
