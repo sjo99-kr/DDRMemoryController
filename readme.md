@@ -1,1 +1,1 @@
-![CI](https://github.com/USERNAME/REPO/actions/workflows/ci.yml/badge.svg)
+![RTL-CI](https://github.com/seongwonjo/DDR4_Controller/actions/workflows/ci.yml/badge.svg)
