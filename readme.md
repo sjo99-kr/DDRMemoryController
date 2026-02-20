@@ -1,1 +1,1 @@
-![RTL-CI](https://github.com/seongwonjo/DDR4_Controller/actions/workflows/ci.yml/badge.svg)
+![RTL-CI](https://github.com/sjo99-kr/DDR_based_Memory_Controller/actions/workflows/ci.yml/badge.svg)
