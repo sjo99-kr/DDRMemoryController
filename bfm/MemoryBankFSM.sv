@@ -25,32 +25,32 @@
 //      - Commands are assumed to be correctly decoded and bank-selected
 //        by higher-level Rank/Channel logic.
 //      - Storage is burst-granular, not full DRAM array-accurate.
-//      - Intended for verification & architectural validation, not signoff.
+//      - Intended for verification & architectural validation.
 //
 //------------------------------------------------------------------------------
 
 module MemoryBankFSM#(
-    parameter int BANKID = 0,
-    parameter int BANKGROUPID = 0,
-    parameter int IOWIDTH = 8,
+    parameter int BANKID        = 0,
+    parameter int BANKGROUPID   = 0,
+    parameter int IOWIDTH       = 8,
     parameter int DEVICEPERRANK = 4,
-    parameter int CWIDTH = 10,
-    parameter int RWIDTH = 15,
-    parameter int BGWIDTH = 2,
-    parameter int BKWIDTH = 2,
+    parameter int CWIDTH        = 10,
+    parameter int RWIDTH        = 15,
+    parameter int BGWIDTH       = 2,
+    parameter int BKWIDTH       = 2,
     parameter int COMMAND_WIDTH = 18,
-    parameter int BURST_LENGTH = 8,
+    parameter int BURST_LENGTH  = 8,
     parameter int MEM_DATAWIDTH = 64,
     
     parameter int tCWL = 12,
-    parameter int tCL = 16,
+    parameter int tCL  = 16,
     parameter int tRCD = 16,
     parameter int tRFC = 256,
-    parameter int tRP = 16
+    parameter int tRP  = 16
 )(
     input logic clk, rst_n, clk2x,
                                                                 //       DDR COMMAND BROADCAST TO EVERY BANKFSM         //
-                                                                //          INPUT  FROM  Memory RANK (For CMD/ADDR)     //
+                                                                //        INPUT  FROM  Memory RANK (For CMD/ADDR)       //
     input logic bankCKE,                                        //  1. Bank Enable Signal, based on the BG, B address   //
     input logic bankCS_N,                                       //  2. Chip selected Signal, based on selected Rank     //
     input logic bankPAR,                                                
