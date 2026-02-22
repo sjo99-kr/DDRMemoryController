@@ -10,14 +10,25 @@
 //  RESPONSIBILITIES:
 //      - Act as the top abstraction of DRAM in the simulation environment.
 //      - Contain per-channel DDR4 memory models (MemoryChannel).
-//      - Provide a clean integration point for multi-channel memory systems.
+//      - Provide a clean integration point for multi-channel ddr memory systems.
 //      - Bridge external DDR4 interfaces to internal channel-level BFMs.
 //
 //  MODELING SCOPE:
 //      - Channel-level structural composition only.
-//      - No timing, scheduling, or protocol logic is implemented here.
+//      - No timing, scheduling, or protocol logic is implemented here (Timing, Scheduling are considered in Memory Controller-side).
 //      - All DRAM protocol behavior is encapsulated inside MemoryChannel
 //        and lower-level Bank/Rank BFMs.
+//
+//          Ch0 DDR4 IF CMD / DQ BUS   Ch1 DDR4 IF CMD / DQ BUS
+//                    |   ∧                    |    ∧   
+//                    V   |                    V    |
+//           +-------------------------------------------+
+//           |          MemoryBFM   (This module)        |
+//           +-------------------------------------------+
+//                  |                           |
+//                  |                           |
+//                  |                           |       
+//              MemoryChannel_0          MemoryChannel_1
 //
 //  ASSUMPTIONS:
 //      - Each channel operates independently (no cross-channel timing).
@@ -28,28 +39,30 @@
 //  NOTES:
 //      - This module is intended purely for verification and architectural
 //        evaluation.
-//      - Not synthesizable.
+//      - Not synthesizable. (but it passes lint)
 //      - Scaling to more channels only requires adding MemoryChannel instances.
 //
+//      Author  : Seongwon Jo
+//      Created : 2026.02
 //------------------------------------------------------------------------------
 
 module MemoryBFM#(
-    parameter int NUMCHANNEL = 2,
-    parameter int NUMRANK = 4,
-    parameter int IOWIDTH = 8,
+    parameter int NUMCHANNEL    = 2,
+    parameter int NUMRANK       = 4,
+    parameter int IOWIDTH       = 8,
     parameter int DEVICEPERRANK = 4,
-    parameter int CWIDTH = 10,
-    parameter int RWIDTH = 15,
-    parameter int BGWIDTH = 2,
-    parameter int BKWIDTH = 2,
+    parameter int CWIDTH        = 10,
+    parameter int RWIDTH        = 15,
+    parameter int BGWIDTH       = 2,
+    parameter int BKWIDTH       = 2,
     parameter int COMMAND_WIDTH = 18,
-    parameter int BURST_LENGTH = 8,
+    parameter int BURST_LENGTH  = 8,
     parameter int MEM_DATAWIDTH = 64,
-    parameter int tCWL = 12,
-    parameter int tCL = 16,
-    parameter int tRCD = 16,
-    parameter int tRP = 16,
-    parameter int tRFC = 256
+    parameter int tCWL          = 12,
+    parameter int tCL           = 16,
+    parameter int tRCD          = 16,
+    parameter int tRP           = 16,
+    parameter int tRFC          = 256
 )(
     input logic clk, rst_n, clk2x
     `ifndef VERILATOR
@@ -57,10 +70,10 @@ module MemoryBFM#(
     DDR4Interface DDR4_CH1_IF
     `endif
 );
-
     `ifdef VERILATOR
         import MemoryController_Definitions::*;
     `endif
+
 
     `ifdef VERILATOR
     DDR4Interface #(

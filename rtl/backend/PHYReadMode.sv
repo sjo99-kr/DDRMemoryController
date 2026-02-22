@@ -71,40 +71,40 @@
 
 
 module PHYReadMode #(
-    parameter int PHY_CHANNEL = 0,
-    parameter int MEM_DATAWIDTH = 64,
-    parameter int PHYFIFODEPTH = 32,
-    parameter int PHYFIFOMAXENTRY = 4,
-    parameter int BURST_LENGTH = 8
+    parameter int PHY_CHANNEL       = 0,
+    parameter int MEM_DATAWIDTH     = 64,
+    parameter int PHYFIFODEPTH      = 32,
+    parameter int PHYFIFOMAXENTRY   = 4,
+    parameter int BURST_LENGTH      = 8
 )(
-                                                             //             Read Mode (PHY)               //
+                                                                //             Read Mode (PHY)               //
     input logic clk, rst, clk2x,                          
-                                                            //          INPUT FROM  DRAM-side             //
-    input logic dqs_t, dqs_c,                               //  1. Diff. signals for DQ BUS               //
-    input logic [MEM_DATAWIDTH-1:0] inData,                 //  2. Data from DQ-BUS WHEN Read Process     //
+                                                                //          INPUT FROM  DRAM-side             //
+    input logic dqs_t, dqs_c,                                   //  1. Diff. signals for DQ BUS               //
+    input logic [MEM_DATAWIDTH-1:0] inData,                     //  2. Data from DQ-BUS WHEN Read Process     //
 
-                                                            //          INPUT FROM PHYCONTROLLER          //
-    input logic inflag,                                     //  1. Valid for Receiving Data from DQ-BUS   //
-    input logic outflag,                                    //  2. Valid for Sending Data to Read Buffer  //
+                                                                //          INPUT FROM PHYCONTROLLER          //
+    input logic inflag,                                         //  1. Valid for Receiving Data from DQ-BUS   //
+    input logic outflag,                                        //  2. Valid for Sending Data to Read Buffer  //
 
-                                                            //          OUTPUT TO PHYCONTROLLER           //
-    output logic readDataACK,                               //  1. Read Data ACK WHEN PHY RECEIVES DATA   //
+                                                                //          OUTPUT TO PHYCONTROLLER           //
+    output logic readDataACK,                                   //  1. Read Data ACK WHEN PHY RECEIVES DATA   //
 
-                                                            //           OUTPUT TO PHYCONTROLLER          //
-    output logic [MEM_DATAWIDTH-1:0] outData,                      //  1. Data to Read Buffer                    //
-    output logic outDataValid,                              //  2. Valid signal for Read Buffer           //
-    output logic outDataLast                                //  3. Last signal for Read Buffer            //
+                                                                //           OUTPUT TO PHYCONTROLLER          //
+    output logic [MEM_DATAWIDTH-1:0] outData,                   //  1. Data to Read Buffer                    //
+    output logic outDataValid,                                  //  2. Valid signal for Read Buffer           //
+    output logic outDataLast                                    //  3. Last signal for Read Buffer            //
 );
 
-    logic [$clog2(PHYFIFODEPTH)-1:0] burst_cnt_dram;        //  Burst Counter for PHY <- DRAM         //
-    logic [$clog2(PHYFIFODEPTH)-1:0] burst_cnt_host;        //  Burst Counter for PHY -> READ BUFFER  //
-    logic [MEM_DATAWIDTH-1:0] readModeFIFO [PHYFIFODEPTH-1:0];     //  Burst Data FIFO   in PHY              //
+    logic [$clog2(PHYFIFODEPTH)-1:0] burst_cnt_dram;            //  Burst Counter for PHY <- DRAM         //
+    logic [$clog2(PHYFIFODEPTH)-1:0] burst_cnt_host;            //  Burst Counter for PHY -> READ BUFFER  //
+    logic [MEM_DATAWIDTH-1:0] readModeFIFO [PHYFIFODEPTH-1:0];  //  Burst Data FIFO   in PHY              //
 
 
     //----  Burst Counter Setup for DQ-BUS Data (Counter) ------//
     always_ff @(posedge clk2x or negedge rst) begin : FIFOPUSHCounter
         if(!rst) begin
-            burst_cnt_dram <= 0;
+            burst_cnt_dram <= '0;
         end else begin
             if(inflag) begin                            // Inflag is triggered by PHYController
                 if(burst_cnt_dram == PHYFIFODEPTH-1)begin

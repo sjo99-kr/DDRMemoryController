@@ -22,23 +22,23 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 
 module AddressTranslationUnit #( 
-    parameter int MEM_ADDRWIDTH = 32,
-    parameter int AXI_ADDRWIDTH = 32,
-    parameter int NUM_FSM = 8,
-    parameter int NUM_FSM_BIT = $clog2(NUM_FSM),
-    parameter int CHWIDTH = 1,
-    parameter int RKWIDTH = 2,
-    parameter type MemoryAddress = logic
+    parameter int MEM_ADDRWIDTH              = 32,
+    parameter int AXI_ADDRWIDTH              = 32,
+    parameter int NUM_RANKEXECUTION_UNIT     = 8,
+    parameter int NUM_RANKEXECUTION_UNIT_BIT = $clog2(NUM_RANKEXECUTION_UNIT),
+    parameter int CHWIDTH                    = 1,
+    parameter int RKWIDTH                    = 2,
+    parameter type MemoryAddress             = logic
     )(
     input logic [AXI_ADDRWIDTH - 1 :0] readAddr, 
     input logic [AXI_ADDRWIDTH - 1 :0] writeAddr, 
-    input logic [NUM_FSM-1:0] readReady,
+    input logic [NUM_RANKEXECUTION_UNIT-1:0] readReady,
     input logic readValid,
-    input logic [NUM_FSM-1:0] writeReady,
+    input logic [NUM_RANKEXECUTION_UNIT-1:0] writeReady,
     input logic writeValid,
 
-    output logic [NUM_FSM - 1:0] targetFSMVector, 
-    output logic [NUM_FSM_BIT-1:0] targetFSMIndex,
+    output logic [NUM_RANKEXECUTION_UNIT - 1:0] targetFSMVector, 
+    output logic [NUM_RANKEXECUTION_UNIT_BIT-1:0] targetFSMIndex,
     output MemoryAddress requestMemAddr
     );
 

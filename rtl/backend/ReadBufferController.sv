@@ -14,7 +14,7 @@
 //
 //      Scope & Notes:
 //          - Handles data-level ordering (burst granularity).
-//          - No DRAM timing logic (handled by RankFSM / PHY).
+//          - No DRAM timing logic (handled by RankExecutionUnit / PHY).
 //          - Uses tag-based matching for PHY read responses.
 //
 //      Author  : Seongwon Jo
@@ -22,19 +22,19 @@
 //------------------------------------------------------------------------------
 
 module ReadBufferController#(
-    parameter int BUFFER_CHANNEL = 0,
+    parameter int BUFFER_CHANNEL        = 0,
 
-    parameter int MEM_DATAWIDTH = 64,
-    parameter int MEM_ADDRWIDTH = 32,
-    parameter int MEM_IDWIDTH = 4,
-    parameter int MEM_USERWIDTH = 1,
-    parameter int NUMRANK = 4,
-    parameter int READBUFFERDEPTH = 128,
-    parameter int BURST_LENGTH = 8,
+    parameter int MEM_DATAWIDTH         = 64,
+    parameter int MEM_ADDRWIDTH         = 32,
+    parameter int MEM_IDWIDTH           = 4,
+    parameter int MEM_USERWIDTH         = 1,
+    parameter int NUMRANK               = 4,
+    parameter int READBUFFERDEPTH       = 128,
+    parameter int BURST_LENGTH          = 8,
 
-    parameter type ReadBufferDataEntry = logic,
-    parameter type ReadBufferDirEntry = logic,    
-    parameter type MemoryAddress = logic
+    parameter type ReadBufferDataEntry  = logic,
+    parameter type ReadBufferDirEntry   = logic,    
+    parameter type MemoryAddress        = logic
 )(
     input logic clk, rst,
                                                             ////////////////////////////////////////////////
@@ -116,8 +116,8 @@ module ReadBufferController#(
     //  - Uses free/received vectors to determine buffer availability.
     //
     //------------------------------------------------------------------------------
-    logic [$clog2(READBUFFERDEPTH)-1:0] readDirPtr, readDataVecPtr;                     //  readDirPtr  (For Serving Process with Cache-side)
-    logic [$clog2(READBUFFERDEPTH)-1:0] writeDirPtr, writeDataVecPtr;                    //  writeDirPtr (For Receiving Proccess with PHY-side)
+    logic [$clog2(READBUFFERDEPTH)-1:0] readDirPtr, readDataVecPtr;     //  readDirPtr  (For Serving Process with Cache-side)
+    logic [$clog2(READBUFFERDEPTH)-1:0] writeDirPtr, writeDataVecPtr;   //  writeDirPtr (For Receiving Proccess with PHY-side)
     logic [READBUFFERDEPTH-1:0] readDirFree;                            
     logic [READBUFFERDEPTH-1:0] readDirReceived;   
     logic [READBUFFERDEPTH-1:0] readDataFree;                    
@@ -167,7 +167,7 @@ module ReadBufferController#(
     //-------------------------------------------------------------------//
 
     //----- Calculating Write Pointer (Ch. Sched.) for Dir Buffer -------//
-    PriorityEncoder_LSB #(                                                     // Calculating the Write Directory Pointer based on DirFree Vector.
+    PriorityEncoder_LSB #(                                                // Calculating the Write Directory Pointer based on DirFree Vector.
         .vector_length(READBUFFERDEPTH)
     ) writeDirPtrCalculator (
         .vector(readDirFree), .index(writeDirPtr));
@@ -199,7 +199,7 @@ module ReadBufferController#(
     //////////////////////////////////////////////////////////////////////
     //              Read Directory Buffer Read/Write Case               //
     //      Read Case                                                   //
-    //         - Read Buffer-driven for data serving to Cache           //
+    //         - Read Buffer-driven for serving data to Cache           //
     //      Write Case                                                  //
     //         - Allocation-driven by Channel Scheduler                 //
     //////////////////////////////////////////////////////////////////////
@@ -246,7 +246,7 @@ module ReadBufferController#(
         if(!rst)begin
             readDirReceived <= '0;
             for(int i =0; i < NUMRANK; i++) begin
-                ReadRequestWindow[i] <= '0;                                          // ReadRequestWindow -> 2-Entry per Rank
+                ReadRequestWindow[i] <= '0;                                  // ReadRequestWindow -> 2-Entry per Rank
             end
         end else begin  
             //                  Request Entry Received Set up               //

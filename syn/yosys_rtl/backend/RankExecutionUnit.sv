@@ -22,7 +22,7 @@
 //------------------------------------------------------------------------------
 import MemoryController_Definitions::*;
 
-module RankFSM(
+module RankExecutionUnit(
     // Common
     input logic clk, 
     input logic rst,

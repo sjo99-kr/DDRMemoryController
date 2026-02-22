@@ -19,9 +19,10 @@
 //        +---------------------------+
 //                      |
 //                      V
-//        +---------------------------+
-//        |   RankSched  |  RankFSM   |
-//        +---------------------------+
+//        +-------------------------------------+
+//        |   RankSched  |  RankExecutionUnit   |
+//        |              | (BankFSMs)           |
+//        +-------------------------------------+
 //                      |
 //                      V
 //               DDR IF CMD BUS
@@ -40,17 +41,17 @@
 //              * Request queueing and arbitration.
 //              * Open-page awareness and aging-based prioritization.
 //              * Decides which request should be issued next.
-//          - RankFSM:
+//          - RankExecutionUnit:
 //              * Enforces DRAM timing constraints (tRCD, tRP, tWR, tRFC).
 //              * Generates DDR command/address signals.
 //              * Tracks row/bank state and refresh state.
 //
 //      Request Flow:
-//          Frontend -> RankController -> RankSched -> RankFSM -> DRAM
+//          Frontend -> RankController -> RankSched -> RankExecutionUnit -> DRAM
 //
 //      Buffer Interaction:
 //          - Read/Write buffers are decoupled via explicit ACK signals.
-//          - RankFSM issues buffer-level ACKs when command is accepted.
+//          - RankExecutionUnit issues buffer-level ACKs when command is accepted.
 //          - Auto-Precharge completion is synchronized with buffer ACKs.
 //
 //      Scheduling Assumptions:
@@ -74,7 +75,7 @@
 //
 //      Design Notes:
 //          - This module is performance-critical and timing-sensitive.
-//          - Split between RankSched and RankFSM improves clarity and reuse.
+//          - Split between RankSched and RankExecutionUnit improves clarity and reuse.
 //          - Intended to scale with NUMBANK / NUMBANKGROUP parameters.
 //
 //      Author  : Seongwon Jo
@@ -83,81 +84,82 @@
 
 
 module RankController #(
-    parameter int FSM_CHANNEL = 0,
-    parameter int FSM_RANK = 0,
-    parameter int NUM_BANKFSM = 0,
-    parameter int NUM_BANKFSM_BIT = 0,
+    parameter int FSM_CHANNEL        = 0,
+    parameter int FSM_RANK           = 0,
+    parameter int NUM_BANKFSM        = 0,
+    parameter int NUM_BANKFSM_BIT    = 0,
     
-    parameter int MEM_IDWIDTH = 4,
-    parameter int MEM_USERWIDTH = 1,
+    parameter int MEM_IDWIDTH        = 4,
+    parameter int MEM_USERWIDTH      = 1,
     parameter int READCMDQUEUEDEPTH  = 8,
     parameter int WRITECMDQUEUEDEPTH = 8,
     parameter int OPENPAGELISTDEPTH  = 16,
-    parameter int AGINGWIDTH = 10,
-    parameter int COMMAND_WIDTH = 18,
-    parameter int BKWIDTH = 2,
-    parameter int BGWIDTH = 2,
-    parameter int RWIDTH = 15,
-    parameter int CWIDTH = 10,
-    parameter int THRESHOLD =512,
-    parameter int NUMBANK = 4,
-    parameter int NUMBANKGROUP = 4,
-    parameter int tRP = 16,
-    parameter int tWR = 18,
-    parameter int tRFC = 256,
-    parameter int tREFI = 8192,
-    parameter int tRCD = 16,
+    parameter int AGINGWIDTH         = 10,
+    parameter int COMMAND_WIDTH      = 18,
+    parameter int BKWIDTH            = 2,
+    parameter int BGWIDTH            = 2,
+    parameter int RWIDTH             = 15,
+    parameter int CWIDTH             = 10,
+    parameter int THRESHOLD          = 512,
+    parameter int NUMBANK            = 4,
+    parameter int NUMBANKGROUP       = 4,
+    parameter int tRP                = 16,
+    parameter int tWR                = 18,
+    parameter int tRFC               = 256,
+    parameter int tREFI              = 8192,
+    parameter int tRCD               = 16,
 
     parameter type MemoryAddress = logic,
     parameter type FSMRequest = logic
 )(
     input logic clk, rst,
-                                                          //        Input from MC FrontEnd       //
+                                                                  //        Input from MC FrontEnd       //
     input MemoryAddress RankReqMemAddr,                                            
     input logic [MEM_IDWIDTH-1:0] RankReqId,                                 
     input logic [MEM_USERWIDTH-1:0] RankReqUser,                             
     input logic RankReqType,
     input logic RankReqValid,
-                                                           //        Output to MC FrontEnd       //                                       
+                                                                 //        Output to MC FrontEnd       //                                       
     output logic RankReadReqReady, 
     output logic RankWriteReqReady,
 
-                                                          //   Input from Channel Scheduler     //
+                                                                //   Input from Channel Scheduler     //
     input logic chSchedCMDGranted,
     input logic chSchedDQGranted,
-    input logic chSchedWriteMode,                         // Channel Mode signal for Read / Write request
+    input logic chSchedWriteMode,                               // Channel Mode signal for Read / Write request
 
-                                                          //    Output to Channel Scheduler     //
-    output logic chSchedRdReady,                          // Read Ready signal, Valid when there is any Read request in Request Que.
-    output logic chSchedWrReady,                          // Write Ready signal, Valid when there is any Write request in Request Que.
-    output logic chSchedRdWrACK,                          // RD/WR ACK signal for Read/Write request, ACK when FSM issues Read/Write CMD.
-    output logic chSchedCMDACK,                           // CMD ACK signal for any CMD, ACK when FSM issues any kind of CMD.
-    output logic chSchedFSMWait,                          // FSMWait signal, Valid when FSM waits for row timing constraints. (e.g., tRP, tRCD, tRFC)
-    output logic chSchedCCDType,                          // CAS-to-CAS timing type, 1 for tCCD_Short , 0 for tCCD_Long
-    output logic [$clog2(READCMDQUEUEDEPTH)-1:0] ReadReqCnt,  // Num. of read Requests in Request Que.
-    output logic [$clog2(WRITECMDQUEUEDEPTH)-1:0] WriteReqCnt, // Num. of write Requests in Request Que.
+                                                                //    Output to Channel Scheduler     //
+    output logic chSchedRdReady,                                // Read Ready signal, Valid when there is any Read request in Request Que.
+    output logic chSchedWrReady,                                // Write Ready signal, Valid when there is any Write request in Request Que.
+    output logic chSchedRdWrACK,                                // RD/WR ACK signal for Read/Write request, ACK when FSM issues Read/Write CMD.
+    output logic chSchedCMDACK,                                 // CMD ACK signal for any CMD, ACK when FSM issues any kind of CMD.
+    output logic chSchedFSMWait,                                // FSMWait signal, Valid when FSM waits for row timing constraints. (e.g., tRP, tRCD, tRFC)
+    output logic chSchedCCDType,                                // CAS-to-CAS timing type, 1 for tCCD_Short , 0 for tCCD_Long
+    output logic [$clog2(READCMDQUEUEDEPTH)-1:0] ReadReqCnt,    // Num. of read Requests in Request Que.
+    output logic [$clog2(WRITECMDQUEUEDEPTH)-1:0] WriteReqCnt,  // Num. of write Requests in Request Que.
     output wire chSchedRankIdle,
     input wire chSchedTransReady,
 
-                                                          //        Input from MEM Buffer       //
-    input rdBufAvailable,                                 // Valid when there is any empty entry in read buffer
+                                                                //        Input from MEM Buffer       //
+    input rdBufAvailable,                                       // Valid when there is any empty entry in read buffer
     input logic rdBufRankAvailable,
-    input wrBufAvailable,                                 // Valid when there is any empty entry in write buffer
-    input logic bufReadPreACK,                            // Valid when Read data (last) is received.
-    input logic bufWritePreACK,                           // Valid when Write data (last) is sent.
-    input logic [BKWIDTH + BGWIDTH - 1 : 0] bufBankPre,   // AutoPrecharge-related BankGroup, Bank Information to FSM.
+    input wrBufAvailable,                                       // Valid when there is any empty entry in write buffer
+    input logic bufReadPreACK,                                  // Valid when Read data (last) is received.
+    input logic bufWritePreACK,                                 // Valid when Write data (last) is sent.
+    input logic [BKWIDTH + BGWIDTH - 1 : 0] bufBankPre,         // AutoPrecharge-related BankGroup, Bank Information to FSM.
 
-                                                          //        Output to MEM Buffer        //
-    output logic [MEM_IDWIDTH-1:0] bufReadReqId,          // When RankFSM sends RD Req., it sends Req. ID to RD MEM Buffer for ready to receive.
-    output logic [MEM_IDWIDTH-1:0] bufWriteReqId,         // When RankFSM sends WR Req., it sends Req. ID to WR MEM Buffer for ready to send.
-    output logic [MEM_USERWIDTH-1:0] bufReadReqUser,      // When RankFSM sends RD Req., it sends Req. User to RD MEM Buffer for ready to receive.
-    output logic [MEM_USERWIDTH-1:0] bufWriteReqUser,     // When RankFSM sends WR Req., it sends Req. User to WR MEM Buffer for ready to send.
-    output logic bufReadReqACK,                           // When RankFSM sends RD Req., it sends Req. valid to RD MEM Buffer for ready to receive.
-    output logic bufWriteReqACK,                          // When RankFSM sends WR Req., it sends Req. valid to WR MEM Buffer for ready to send.    
-    output MemoryAddress bufReqACKAddr,                   // When RankFSM sends RD/WR Req., it sends Req. Addr. to RD/WR Mem Buffer.
+                                                                //        Output to MEM Buffer        //
+    output logic [MEM_IDWIDTH-1:0] bufReadReqId,                // When RankExecutionUnit sends RD Req., it sends Req. ID to RD MEM Buffer for ready to receive.
+    output logic [MEM_IDWIDTH-1:0] bufWriteReqId,               // When RankExecutionUnit sends WR Req., it sends Req. ID to WR MEM Buffer for ready to send.
+    output logic [MEM_USERWIDTH-1:0] bufReadReqUser,            // When RankExecutionUnit sends RD Req., it sends Req. User to RD MEM Buffer for ready to receive.
+    output logic [MEM_USERWIDTH-1:0] bufWriteReqUser,           // When RankExecutionUnit sends WR Req., it sends Req. User to WR MEM Buffer for ready to send.
+    output logic bufReadReqACK,                                 // When RankExecutionUnit sends RD Req., it sends Req. valid to RD MEM Buffer for ready to receive.
+    output logic bufWriteReqACK,                                // When RankExecutionUnit sends WR Req., it sends Req. valid to WR MEM Buffer for ready to send.    
+    output MemoryAddress bufReqACKAddr,                         // When RankExecutionUnit sends RD/WR Req., it sends Req. Addr. to RD/WR Mem Buffer.
 
 
     output logic issuable,
+
     // Memory channel, PHY - side 
     output logic cke, cs_n, par, act_n,
     output logic [COMMAND_WIDTH-1:0] pin_A,
@@ -165,7 +167,7 @@ module RankController #(
     output logic [BKWIDTH-1:0] b
     );
     
-    //----------- Internal Wires for RankSched <-> RankFSM --------------//
+    //----------- Internal Wires for RankSched <-> RankExecutionUnit --------------//
     logic [NUM_BANKFSM-1:0] fsmWait;
     wire  [NUM_BANKFSM-1:0] fsmIdle;
     logic [NUM_BANKFSM-1:0] fsmIssue;
@@ -227,7 +229,7 @@ module RankController #(
         .refresh(refresh), .chSchedAvailableCMD(chSchedAvailableCMD), .chSchedAvailableCMDDQ(chSchedAvailableCMDDQ)
     );
 
-    RankFSM #(
+    RankExecutionUnit #(
         .FSM_CHANNEL(FSM_CHANNEL),
         .FSM_RANK(FSM_RANK),
         .MEM_IDWIDTH(MEM_IDWIDTH),
@@ -247,7 +249,7 @@ module RankController #(
         .tRCD(tRCD),
         .FSMRequest(FSMRequest),
         .MemoryAddress(MemoryAddress)
-    ) RankFiniteStateMachine (
+    ) RankExecutionUnit_Instance (
         .clk(clk), .rst(rst), .chMode(chSchedWriteMode),
         
         .ReadPreAck(bufReadPreACK), .WritePreAck(bufWritePreACK),

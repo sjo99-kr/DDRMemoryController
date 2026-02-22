@@ -38,7 +38,7 @@
 //         PHY Write FIFO
 //               |
 //               V
-//         [ clk2x domain ]
+//         [ clk2x domain (Abstract PHY) ]
 //               |
 //               V
 //          DDR4 DQ / DQS
@@ -66,7 +66,6 @@
 //          - DM is inverted to match DDR4 active-low convention.
 //          - FIFO is reset when inflag is deasserted.
 //
-//
 //      Author  : Seongwon Jo
 //      Created : 2026.02
 //------------------------------------------------------------------------------
@@ -81,7 +80,7 @@ module PHYWriteMode #(
     input logic clk, rst,                          
                                                             //          OUTPUT TO  DRAM-SIDE                  //
     output logic dqs_t, dqs_c,                              //  1. Diff. signals for DQ BUS                   //
-    output logic [MEM_DATAWIDTH - 1 : 0] outdata,               //  2. Data to DQ BUS WHEN Write Processing       //
+    output logic [MEM_DATAWIDTH - 1 : 0] outdata,           //  2. Data to DQ BUS WHEN Write Processing       //
     output logic [MEM_DATAWIDTH/BURST_LENGTH-1:0] outDM,    //  3. Data Masking Bit for 64-bit data           //
 
 
@@ -93,8 +92,7 @@ module PHYWriteMode #(
     input logic outflag,                                    //  5. Valid for Sending Data to DRAM-SIDE        //
 
                                                             //          OUTPUT TO PHYCONTROLLER               //
-    output logic outACK,                                    //  1. ACK to PHY Controller for Sending Data     //
-    output logic WriteModeDQSValid
+    output logic outACK                                     //  1. ACK to PHY Controller for Sending Data     //
 );
 
 
@@ -111,13 +109,11 @@ module PHYWriteMode #(
             dqs_t             <= 1'b0;
             dqs_c             <= 1'b1;
             burst_cnt_dram    <= 0;
-            WriteModeDQSValid <= 0;
         end else begin
             if(outflag) begin
                 `ifdef DISPLAY
                     $display("[%0t] PHYWriteMode | SERVING WRITE DATA : %h | Read: %d", $time, outdata, burst_cnt_dram[$clog2(BURST_LENGTH)-1:0]);
                 `endif
-                WriteModeDQSValid <= 1;
                 dqs_t <= ~dqs_t;
                 dqs_c <= dqs_t;
                 if(burst_cnt_dram == PHYFIFODEPTH-1)begin
@@ -126,7 +122,6 @@ module PHYWriteMode #(
                     burst_cnt_dram <= burst_cnt_dram + 1;
                 end
             end else begin
-                WriteModeDQSValid <= 0;
                 dqs_t           <= '0;
                 dqs_c           <= '1;
                 burst_cnt_dram  <= '0;
@@ -136,23 +131,7 @@ module PHYWriteMode #(
 
     /////////////////////////////////////////////////////////////
 
-    //---  Burst OUT DATA ACKNOWLEDGE SETUP (For PHYController) --//
- //   always@(posedge clk or negedge rst)begin : OutACKSetup
- //       if(!rst) begin
- //           outACK <= 0;
- //       end else begin
- //           if(outflag) begin
- ///               if(burst_cnt_dram[2:0] == BURST_LENGTH-1) begin
- //                   $display("[CH-%d PHY WRITE MODE] CLK: %d | WRITE DATA SEND TO DRAM",PHY_CHANNEL, $time);
-       //             outACK <= 1;
-   //             end else begin
-     //               outACK <= 0;
-     //           end
-    //   /     end else begin
-        //        outACK <= 0;
-        //    end
-     //   end
-   // end : OutACKSetup
+
     assign outACK = (burst_cnt_dram[2:0] == BURST_LENGTH-1) ? 1: 0;
     /////////////////////////////////////////////////////////////
 
@@ -168,7 +147,7 @@ module PHYWriteMode #(
     //-----------  Burst Data FIFO PUSH Process  (PUSH) ---------//
     always_ff@(posedge clk or negedge rst) begin : FIFOPUSH
         if(!rst) begin
-            burst_cnt_host  <= 0;
+            burst_cnt_host           <= 0;
             for(int i =0; i< PHYFIFODEPTH; i++) begin
                 writeModeFIFO[i]     <= 0;
                 writeModeDMFIFO[i]   <= 0;
@@ -178,12 +157,12 @@ module PHYWriteMode #(
                 writeModeFIFO[burst_cnt_host]     <= inData;
                 writeModeDMFIFO[burst_cnt_host]   <= inStrb;
                 if(burst_cnt_host == PHYFIFODEPTH-1) begin
-                    burst_cnt_host <= 0;
+                    burst_cnt_host                <= 0;
                 end else begin
-                    burst_cnt_host <= burst_cnt_host + 1;
+                    burst_cnt_host                <= burst_cnt_host + 1;
                 end
             end else begin
-                burst_cnt_host <= 0;
+                burst_cnt_host                    <= 0;
             end
         end
     end : FIFOPUSH

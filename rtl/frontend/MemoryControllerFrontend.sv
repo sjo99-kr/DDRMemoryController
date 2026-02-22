@@ -59,26 +59,26 @@
 
 
 module MemoryControllerFrontend#(
-        parameter int AXI_ADDRWIDTH = 32,
-        parameter int AXI_USERWIDTH = 1,
-        parameter int AXI_IDWIDTH   = 4,
-        parameter int AXI_DATAWIDTH = 64,
+        parameter int AXI_ADDRWIDTH              = 32,
+        parameter int AXI_USERWIDTH              = 1,
+        parameter int AXI_IDWIDTH                = 4,
+        parameter int AXI_DATAWIDTH              = 64,
 
-        parameter int MEM_ADDRWIDTH = 32,
-        parameter int CHWIDTH = 1,
-        parameter int RKWIDTH = 15,
-        parameter int NUM_FSM = 8,
-        parameter int NUM_FSM_BIT = $clog2(NUM_FSM),
-        parameter int BURST_LENGTH = 8,
-        parameter int ASSEMBLER_DEPTH = 8,
+        parameter int MEM_ADDRWIDTH              = 32,
+        parameter int CHWIDTH                    = 1,
+        parameter int RKWIDTH                    = 2,
+        parameter int NUM_RANKEXECUTION_UNIT     = 8,
+        parameter int NUM_RANKEXECUTION_UNIT_BIT = $clog2(NUM_RANKEXECUTION_UNIT),
+        parameter int BURST_LENGTH               = 8,
+        parameter int ASSEMBLER_DEPTH            = 8,
 
-        parameter type WrAddrEntry = logic,
-        parameter type CacheResp = logic,
-        parameter type CacheReq  = logic,
-        parameter type MCResp   = logic,
-        parameter type MCReq    = logic,
-        parameter type axi_aw_chan_t = logic,
-        parameter type MemoryAddress = logic
+        parameter type WrAddrEntry               = logic,
+        parameter type CacheResp                 = logic,
+        parameter type CacheReq                  = logic,
+        parameter type MCResp                    = logic,
+        parameter type MCReq                     = logic,
+        parameter type axi_aw_chan_t             = logic,
+        parameter type MemoryAddress             = logic
     )
 
    (
@@ -137,7 +137,7 @@ module MemoryControllerFrontend#(
 
     //              Write Assembler-Data Queue Entry Definition             //
     logic [AXI_IDWIDTH + AXI_USERWIDTH + WR_BEAT_WIDTH * BURST_LENGTH - 1 : 0] WrDataQueue [0: ASSEMBLER_DEPTH-1]; 
-    logic [ASSEMBLER_DEPTH - 1 : 0] WrDataFree, WrAddrFree, WrPushPtrFree; 
+    logic [ASSEMBLER_DEPTH - 1 : 0]  WrDataFree, WrAddrFree, WrPushPtrFree; 
     logic [ASSEMBLER_DEPTH - 1 : 0]  assemblyVector;  
 
     logic [$clog2(ASSEMBLER_DEPTH) - 1 :0] WrDataPushPtr, WrAddrPushPtr;
@@ -172,13 +172,13 @@ module MemoryControllerFrontend#(
     //      - Current mapping uses fixed bit slicing.
     //------------------------------------------------------------------------------
     MemoryAddress translatedAddr;
-    logic [NUM_FSM-1:0] FSM_vector;
-    logic [NUM_FSM_BIT-1:0] FSM_index;
+    logic [NUM_RANKEXECUTION_UNIT-1:0] FSM_vector;
+    logic [NUM_RANKEXECUTION_UNIT_BIT-1:0] FSM_index;
 
     AddressTranslationUnit #(   // Only for Request side
         .MEM_ADDRWIDTH(MEM_ADDRWIDTH),
         .AXI_ADDRWIDTH(AXI_ADDRWIDTH),
-        .NUM_FSM(NUM_FSM),
+        .NUM_RANKEXECUTION_UNIT(NUM_RANKEXECUTION_UNIT),
         .CHWIDTH(CHWIDTH),
         .RKWIDTH(RKWIDTH),
         .MemoryAddress(MemoryAddress)
@@ -194,9 +194,9 @@ module MemoryControllerFrontend#(
         .requestMemAddr(translatedAddr)
     );
     //-------------------------------------------------------------------//
-    assign ReadRequestReceived  = noc_req.ar_valid    && noc_resp.ar_ready  &&  |(FSM_vector[FSM_index]);   
+    assign ReadRequestReceived  = noc_req.ar_valid    && noc_resp.ar_ready  && (FSM_vector[FSM_index]);   
     assign WriteDataReceived    = noc_req.w_valid     && noc_resp.w_ready;
-    assign WriteAddrReceived    = noc_req.aw_valid    && noc_resp.aw_ready  && |(FSM_vector[FSM_index]);
+    assign WriteAddrReceived    = noc_req.aw_valid    && noc_resp.aw_ready  && (FSM_vector[FSM_index]);
     assign arbitrationMode      = |assemblyVector;
 
     //----------------------- WR, WR_ADDR PTR - SETUP -----------------------//
@@ -468,7 +468,7 @@ module MemoryControllerFrontend#(
     ) else $error("MC Frontend: Write Arbitration Mode Error");
 
     ReadRequestArbitration : assert property ( @(posedge clk) disable iff (!rst_n)
-        (arbitrationMode) |-> (!mc_req.write)
+        (arbitrationMode) |-> (mc_req.write)
     ) else $error("MC Frontend: (Read Request) Arbitration Mode Error");
 `endif
 endmodule

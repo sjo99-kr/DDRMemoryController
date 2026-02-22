@@ -26,16 +26,15 @@
 interface DDR4Interface #(
 	parameter int COMMAND_WIDTH = 18,
 	parameter int MEM_DATAWIDTH = 64,
-	parameter int BURST_LENGTH =8,
-	parameter int BGWIDTH = 2,
-	parameter int BKWIDTH = 2,
-	parameter int RWIDTH = 15,
-	parameter int RKWIDTH = 2,
-	parameter int CWIDTH = 10,
-	parameter int NUMRANK = 4
+	parameter int BURST_LENGTH  = 8,
+	parameter int BGWIDTH       = 2,
+	parameter int BKWIDTH       = 2,
+	parameter int RWIDTH        = 15,
+	parameter int RKWIDTH       = 2,
+	parameter int CWIDTH        = 10,
+	parameter int NUMRANK       = 4
 ) (
         /* verilator lint_off UNUSEDSIGNAL */
-
 	input logic clk, rst
 );
 

@@ -77,6 +77,6 @@ module DualPortBuffer #(
 `ifdef ASSERTION
     DualPortBufferRAW : assert property ( @(posedge clk) disable iff(!rst)
         !(re && we && (readPtr == writePtr))
-    ) else $error("DualPortBuffer: RAW Hazard occured.");
+    ) else $fatal(2,"DualPortBuffer: RAW Hazard occured.");
 `endif
 endmodule

@@ -3,55 +3,143 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 //      ChannelController
 //
-//      Role:
-//         Channel-level arbitration and scheduling logic for a single DDR channel.
-//         This module connects MC Request from MC frontend to per-rank controllers,
-//          while enforcing channel-wide timing and resource constraints.
+//  ----------------------------------------------------------------------------
+//  Overview
+//  ----------------------------------------------------------------------------
+//  ChannelController implements channel-level arbitration and timing coordination
+//  for a single DDR4 memory channel.
 //
-//       Responsibilities:
-//         1) Dispatch frontend memory requests to the corresponding RankController
-//            based on rank address.
-//         2) Perform channel-wide arbitration for:
-//              - CMD bus (ACT / RD / WR / PRE / REF)
-//              - DQ bus (read/write data timing and turnaround)
-//         3) Enforce DDR timing constraints at channel scope:
-//              - CMD bus : tRTR (rank-to-rank switching)
-//              - DQ bus  : tCCD_S/L, tRTW, tWTR_S/L
-//         4) Coordinate Auto-Precharge events between PHY, RankController,
-//            and Memory Buffer.
+//  It serves as the integration layer between:
 //
-//       Design Notes:
-//         - One ChannelController exists per memory channel.
-//         - Each channel contains multiple Rank-Controllers.
-//         - Rank-level row/bank timing is handled inside RankController;
-//           this module focuses on channel-level conflicts and arbitration.
+//      • MC Frontend (request injection)
+//      • Multiple RankControllers (rank-level scheduling and row/bank FSMs)
+//      • Memory Buffer (data movement coordination)
+//      • PHY Controller (command/data bus execution)
 //
-//      Author  : Seongwon Jo
-//      Created : 2026.02
+//  While RankController manages row/bank-level timing and open-page behavior,
+//  ChannelController enforces channel-level structural and timing constraints
+//  across all ranks.
+//
+//  ----------------------------------------------------------------------------
+//  Architectural Role
+//  ----------------------------------------------------------------------------
+//  1) Frontend Demultiplexing
+//     - Routes incoming memory requests to the appropriate RankController
+//       based on rank address.
+//     - Propagates per-rank ready signals back to the frontend.
+//  
+//  2) Channel-Level Command Arbitration (CMD Bus)
+//     - Grants exclusive access to the shared command/address bus.
+//     - Enforces rank-to-rank switching constraint (tRTR).
+//     - Ensures only one rank issues a command per cycle.
+//
+//  3) Channel-Level Data Scheduling (DQ Bus)
+//     - Enforces CAS-to-CAS timing (tCCD_S / tCCD_L).
+//     - Enforces Read/Write turnaround constraints (tRTW, tWTR_S/L).
+//     - Coordinates data bus availability across all ranks.
+//
+//  4) PHY & Memory Buffer Coordination
+//     - Routes Auto-Precharge completion acknowledgments from PHY
+//       to the correct RankController.
+//     - Collects per-rank command acknowledgments and forwards them
+//       to Memory Buffer and PHY Controller.
+//     - Maintains issued-command tracking for data movement alignment.
+//
+//
+//  ----------------------------------------------------------------------------
+//  Timing Responsibility Boundary
+//  ----------------------------------------------------------------------------
+//  ChannelController enforces:
+//
+//      • Channel-level structural hazards
+//      • CMD bus turnaround (tRTR)
+//      • DQ bus structural and turnaround constraints
+//      • Cross-rank interference control
+//
+//  ----------------------------------------------------------------------------
+//  Scheduling Domains
+//  ----------------------------------------------------------------------------
+//
+//  [1] CMD Domain
+//      - One command per cycle across all ranks.
+//      - Arbitration based on queue depth and FSM readiness.
+//      - tRTR enforced between different ranks.
+//
+//  [2] DQ Domain
+//      - Data transfer subject to:
+//          • CAS-to-CAS spacing (tCCD_S/L)
+//          • Read/Write direction switching constraints
+//      - Independent from CMD arbitration but coordinated through ACK.
+//
+//
+//  ----------------------------------------------------------------------------
+//  Design Principles
+//  ----------------------------------------------------------------------------
+//
+//  • Separation of Concerns
+//        Channel-level timing is strictly separated from rank-level timing.
+//
+//  • Structural Hazard Awareness
+//        Shared resources (CMD bus, DQ bus) are explicitly arbitrated.
+//
+//  • Deterministic Timing Enforcement
+//        All turnaround constraints are modeled as explicit grant modules.
+//
+//  • Scalable Multi-Rank Structure
+//        Each channel contains multiple RankControllers operating in parallel,
+//        while ChannelController coordinates shared resource usage.
+//
+//
+//  ----------------------------------------------------------------------------
+//  Implementation Notes
+//  ----------------------------------------------------------------------------
+//
+//  - One ChannelController exists per memory channel.
+//  - Current implementation assumes NUMRANK = 4 (vectorized logic).
+//  - Arbitration logic is modularized into:
+//        • CMDGrantScheduler   (Main rank CMD arbitration)
+//        • CMDTurnaroundGrant  (Calculating tRTRS timing)
+//        • DQRdWrCCDGrant      (Calculating tCCDS/tCCDL timing)
+//        • DQTurnaroundGrant   (Calculating tRTW, tWTRS/tWTRL timing)
+//  - ChannelController does not perform request reordering; it
+//    only resolves channel-level conflicts.
+//
+//  Author  : Seongwon Jo
+//  Created : 2026.02
 //////////////////////////////////////////////////////////////////////////////////////////
 
 module ChannelController #(
-    parameter int DEVICE_CHANNEL = 0,
-
-    parameter int NUM_BANKFSM  = 16,
-    parameter int NUM_BANKFSM_BIT = 4,
-
-    parameter int MEM_IDWIDTH = 4,
-    parameter int MEM_USERWIDTH = 1,
-    parameter int NUMRANK = 4, parameter int NUMBANK = 4, parameter int NUMBANKGROUP = 4,
-    parameter int BGWIDTH = 2, parameter int BKWIDTH = 2,
-    parameter int RWIDTH = 2, parameter int CWIDTH = 10, parameter int COMMAND_WIDTH = 18,
-    parameter int READCMDQUEUEDEPTH = 8,
+    parameter int DEVICE_CHANNEL     = 0,
+    parameter int NUM_BANKFSM        = 16,
+    parameter int NUM_BANKFSM_BIT    = 4,
+    parameter int MEM_IDWIDTH        = 4,
+    parameter int MEM_USERWIDTH      = 1,
+    parameter int NUMRANK            = 4, 
+    parameter int NUMBANK            = 4, 
+    parameter int NUMBANKGROUP       = 4,
+    parameter int BGWIDTH            = 2, 
+    parameter int BKWIDTH            = 2,
+    parameter int RWIDTH             = 2, 
+    parameter int CWIDTH             = 10,
+    parameter int COMMAND_WIDTH      = 18,
+    parameter int READCMDQUEUEDEPTH  = 8,
     parameter int WRITECMDQUEUEDEPTH = 8,
-    parameter int OPENPAGELISTDEPTH = 16,
-    parameter int AGINGWIDTH = 10,
-    parameter int THRESHOLD = 512,
-    parameter int tRP = 16, parameter int tWR = 18, parameter int tRFC = 256,
-    parameter int tRTRS = 2, parameter int tCCDL = 6, parameter int tCCDS = 4,
-    parameter int tRTW = 8, parameter int tWTRS = 3, parameter int tWTRL = 9,
-    parameter int tREFI = 8192, parameter int tRCD = 16,
-    parameter type FSMRequest = logic,    
-    parameter type MemoryAddress = logic
+    parameter int OPENPAGELISTDEPTH  = 16,
+    parameter int AGINGWIDTH         = 10,
+    parameter int THRESHOLD          = 512, 
+    parameter int tRP                = 16, 
+    parameter int tWR                = 18, 
+    parameter int tRFC               = 256,
+    parameter int tRTRS              = 2, 
+    parameter int tCCDL              = 6, 
+    parameter int tCCDS              = 4,
+    parameter int tRTW               = 8, 
+    parameter int tWTRS              = 3, 
+    parameter int tWTRL              = 9,
+    parameter int tREFI              = 8192, 
+    parameter int tRCD               = 16,
+    parameter type FSMRequest        = logic,    
+    parameter type MemoryAddress     = logic
 )(
     // common
     input logic clk, rst,
@@ -72,8 +160,8 @@ module ChannelController #(
                                                             /////////////////////////////////////////
     // Buffer-side                                          //        Input from MEM Buffer        //
     input logic rdBufAvailable,                             //  1. Read Buffer Available           //
-    input logic [NUMRANK-1:0] rdBufRankWindowAvailable,
-    input logic wrBufAvailable,                             //  2. Write Buffer Available          //
+    input logic [NUMRANK-1:0] rdBufRankWindowAvailable,     //  2. Per-rank Read Req Window Avail. //
+    input logic wrBufAvailable,                             //  3. Write Buffer Available          //
 
                                                             /////////////////////////////////////////
                                                             //         INPUT FROM PHYCONTROLLER    //
@@ -83,15 +171,16 @@ module ChannelController #(
     input MemoryAddress PHYWriteModePreAddr,                //  4. Auto-Precharge Write Req ADDR   //
 
                                                             /////////////////////////////////////////
-                                                            //          INPUT FROM MC BACKEND      //
+                                                            //  INPUT/OUTPUT FROM/TO MC BACKEND    //
     input logic channelMode,                                //  1. Channel Mode Selection          //
+    output logic channelIdle,                               //  2. All Rank Idle Signal            //
+    input wire ChannelRDWRTransReady,                       //  3. Mode Transition Ready Signal    //
+
     output logic [$clog2(READCMDQUEUEDEPTH * NUMRANK):0] NumRdReq,
     output logic [$clog2(WRITECMDQUEUEDEPTH * NUMRANK):0] NumWrReq,
-    output logic channelIdle,              
-    input wire ChannelRDWRTransReady,                 
 
                                                             //////////////////////////////////////////
-                                                            //        Output to MEM Buffer          //
+                                                            //        OUTPUT TO MEM BUFFER          //
     output logic [MEM_IDWIDTH-1:0] bufReadReqId,            // 1. RD Req ID for RD MEM Data RECV    //
     output logic [MEM_IDWIDTH-1:0] bufWriteReqId,           // 2. WR Req ID for WR MEM Data SEND    //
     output logic [MEM_USERWIDTH-1:0] bufReadReqUser,        // 3. RD Req User for RD MEM Data RECV  //
@@ -110,12 +199,11 @@ module ChannelController #(
     output logic phyWriteCMDIssuedACK,                      // 3. Write CMD  Issued  ACK            //
     output MemoryAddress phyWriteCMDIssuedAddr,             // 4. Write CMD  Issued  ACK Address    //
 
-    // PHY-side                                             //////////////////////////////////////////
+                                                            //////////////////////////////////////////
                                                             //         Output to PHY-SIDE           //
     DDR4Interface chDDR4_CMD_ADDR_IF                        //  1. DDR4 Command/Address Interface   //
     );
     
-
     typedef struct packed {                                 // MCFrontEnd-related Singals
         MemoryAddress addr;
         logic [MEM_IDWIDTH-1:0] id;
@@ -128,27 +216,27 @@ module ChannelController #(
 
     typedef struct packed {                                 // channel Scheduler-related Signals
         logic chSchedCMDGranted;                            // 1. CMD bus granted : Only one RankController is granted for CMD Bus
-        logic chSchedRdReady;                               // 2. RankController Ready signal : When there is any requests in RankController, it is ready (1).
-        logic chSchedWrReady;
-        logic chSchedACK;                                   // 3. RankController Req ACK signal : When RankFSM sends Read/Write signal to DRAM, it is ACK (1).
-        logic chSchedGrantACK;                              // 4. CMD bus grant signal to only one RankController : When Channel Controller grants CMD bus to specific RankController, it is valid (1).
-        logic chSchedFSMWait;                               // 5. RankController waits for Row timing constraints : When RankFSM is waiting for row timing constraints, it is valid (1).
-        logic ccdType;                                      // 6. tCCD timing types for DQ bus timing constraints : It is 1 for tCCDS, and 0 for tCCDL.
+        logic chSchedRdReady;                               // 2. RankController Read Ready signal  : When there is any requests in RankController, it is ready (1).
+        logic chSchedWrReady;                               // 3. RankController Write Ready signal : When there is any requests in RankController, it is ready (1).
+        logic chSchedACK;                                   // 4. RankController Req ACK signal : When RankFSM sends Read/Write signal to DRAM, it is ACK (1).
+        logic chSchedGrantACK;                              // 5. CMD bus grant signal to only one RankController : When Channel Controller grants CMD bus to specific RankController, it is valid (1).
+        logic chSchedFSMWait;                               // 6. RankController waits for Row timing constraints : When RankFSM is waiting for row timing constraints, it is valid (1).
+        logic ccdType;                                      // 7. tCCD timing types for DQ bus timing constraints : It is 1 for tCCDS, and 0 for tCCDL.
     } chSched;
 
     typedef struct packed {                                 // MEMBuffer-related Signals
-        logic bufReadPreACK;                                
-        logic bufWritePreACK;
-        logic [BKWIDTH+BGWIDTH-1:0] bufBankPre;             // 1. Bank, Bankgroup address for Auto-Precharge
+        logic bufReadPreACK;                                // 1. Indicates Auto-Precharge completion of READ BURST  (From PHY Controller)
+        logic bufWritePreACK;                               // 2. Indicates Auto-Precharge completion of WRITE BURST (From PHY Controller)
+        logic [BKWIDTH+BGWIDTH-1:0] bufBankPre;             // 3. Auto-Precharge target bank                         (From PHY Controller)
 
-        logic [MEM_IDWIDTH-1:0] bufReadReqId;
-        logic [MEM_IDWIDTH-1:0] bufWriteReqId;
-        logic [MEM_USERWIDTH-1:0] bufReadReqUser;
-        logic [MEM_USERWIDTH-1:0] bufWriteReqUser;
-        logic bufReadReqACK;
-        logic bufWriteReqACK;
+        logic [MEM_IDWIDTH-1:0] bufReadReqId;               // 4. Read Request ID for Read Buffer Allocation
+        logic [MEM_IDWIDTH-1:0] bufWriteReqId;              // 5. Write Request ID for Write Buffer Allocation
+        logic [MEM_USERWIDTH-1:0] bufReadReqUser;           // 6. Read Request User for Read Buffer Allocation
+        logic [MEM_USERWIDTH-1:0] bufWriteReqUser;          // 7. Write Request User for Write Buffer Allocation
+        logic bufReadReqACK;                                // 8. Read Buffer Allocation ACK (Valid)    
+        logic bufWriteReqACK;                               // 9. Write Buffer Allocation ACK (Valid)
 
-        MemoryAddress bufReqACKAddr;
+        MemoryAddress bufReqACKAddr;                        // 10. Request address for Buffer Allocation
     } memBuffer;
     
 
@@ -166,21 +254,21 @@ module ChannelController #(
 
 
 
-    always_comb begin
+    always_comb begin : RdWrRequestCounting
         NumRdReqCnt = 0;
         NumWrReqCnt = 0;
         for(int i = 0; i< NUMRANK; i++) begin
             NumRdReqCnt = RDReqCnt[i] + NumRdReqCnt;
             NumWrReqCnt = WRReqCnt[i] + NumWrReqCnt;
         end
-    end
+    end : RdWrRequestCounting
 
     assign NumRdReq =  NumRdReqCnt;
     assign NumWrReq =  NumWrReqCnt;
 
     //                   Signal definitions for Channel Scheduling                  //
     logic chRdWrAvailabe;                   // DQ bus available : accounting for tCCD      
-    logic DQTurnaroundFree;                 // DQ bus available : accounting for tRTW/tWTR
+    logic DQTurnaroundFree;                 // DQ bus available : accounting for tRTW/tWTR+
     logic DQFree;                           // DQ bus Free signal : accounting for both tCCD & tRTW/tWTR
     logic rankTransition;                   // Rank transition signal : ACK for rank transition
     logic CMDTurnaroundFree;                // CMD bus available : accouting for tRT
@@ -201,7 +289,6 @@ module ChannelController #(
     //          - ACK is forwarded only to the corresponding RankController
     //          - BankGroup/Bank information is preserved for per-bank AP tracking
     //------------------------------------------------------------------------------
-
     always_comb begin : AutoPreChargeACKFromPHYController
         for(int i = 0; i < NUMRANK; i++) begin
             memBufferVector[i].bufReadPreACK =0;
@@ -346,7 +433,7 @@ module ChannelController #(
     );
 
     //------------------------------------------------------------------------------
-    //      Channel-Wide Scheduling Overview
+    //      Channel-level Scheduling Overview
     //
     //      CMD Bus:
     //          - One RankController can issue a command at a time
@@ -407,7 +494,7 @@ module ChannelController #(
     //              * Row/Bank FSMs
     //              * Open-page tracking
     //              * Bank-level timing (tRP, tRCD, tWR, tRFC, etc.)
-    //       - ChannelController only coordinates channel-wide conflicts
+    //       - ChannelController only coordinates channel-level conflicts
     //
     //   NOTE: Current implementation assumes NUMRANK = 4.
     //------------------------------------------------------------------------------

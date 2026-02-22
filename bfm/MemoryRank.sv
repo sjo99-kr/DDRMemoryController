@@ -41,10 +41,6 @@
 //          - Timing constraints are enforced at bank-level FSMs.
 //
 //      Design Notes:
-//          - This module does NOT model:
-//              * Analog signal integrity
-//              * DQS training / calibration
-//              * Power-down / self-refresh electrical behavior
 //          - Intended for:
 //              * Memory controller verification
 //              * Timing FSM validation
@@ -55,22 +51,21 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 module MemoryRank#(
-    parameter int RANKID = 0,
-    parameter int IOWIDTH = 0,
+    parameter int RANKID        = 0,
+    parameter int IOWIDTH       = 0,
     parameter int DEVICEPERRANK = 4,
-    parameter int CWIDTH = 10,
-    parameter int RWIDTH = 15,
-    parameter int BGWIDTH = 2,
-    parameter int BKWIDTH = 2,
+    parameter int CWIDTH        = 10,
+    parameter int RWIDTH        = 15,
+    parameter int BGWIDTH       = 2,
+    parameter int BKWIDTH       = 2,
     parameter int COMMAND_WIDTH = 18,
     parameter int BURST_LENGTH  = 8,
     parameter int MEM_DATAWIDTH = 64,
-
-    parameter int tCWL = 12,
-    parameter int tCL  = 16,
-    parameter int tRCD = 16,
-    parameter int tRFC = 256,
-    parameter int tRP =  16
+    parameter int tCWL          = 12,
+    parameter int tCL           = 16,
+    parameter int tRCD          = 16,
+    parameter int tRFC          = 256,
+    parameter int tRP           = 16
 )(
     input logic clk, rst_n, clk2x,
 
@@ -108,9 +103,6 @@ module MemoryRank#(
     //      - Decodes BG/BK fields from CMD/ADDR interface.
     //      - Generates one-hot bank activation vector.
     //      - Used to trigger behavioral execution in a single bank FSM.
-    //
-    //  NOTE:
-    //      - No electrical timing or command bus contention is modeled.
     //------------------------------------------------------------------------------
     always_comb begin
         bankCMDGranted = '0;
@@ -119,7 +111,6 @@ module MemoryRank#(
         end
     end
     assign rankSelect = (ddr4_cmdaddr_if.cs_n[RANKID] == 0) ? 0 : 1;
-
 
     //------------------------------------------------------------------------------
     //      Bank-Level FSM Instantiation (BFM)
@@ -187,21 +178,25 @@ module MemoryRank#(
     //  BFM Assumption:
     //      - Multiple banks asserting DQ valid simultaneously is illegal.
     //------------------------------------------------------------------------------
-
+    logic [$clog2(NUMBANKFSM)-1:0] assertionCnt;
     always_comb begin
         for (int p = 0; p < NUMBANKFSM; p++) begin
             bankWrData[p] = 0;
         end
-
+        assertionCnt = 0;
         for(int q = 0; q < NUMBANKFSM; q++) begin
             if(bankDQRdGranted[q]) begin
                 rankRdData = bankRdData[q];
+                assertionCnt = assertionCnt +1;
             end
             if(bankDQWrGranted[q]) begin
                 bankWrData[q] = rankWrData;
+                assertionCnt = assertionCnt + 1;
             end
         end
-    
+        MultipleBankDriven :assert(
+            (assertionCnt == 1) || (assertionCnt == 0)
+        ) else $fatal(2, "MemoryBankFSM multiple-driven");
     end
     assign rankDQRdValid = |bankDQRdGranted;
     assign rankDQWrValid = |bankDQWrGranted;

@@ -180,7 +180,7 @@ module RankController (
         .refresh(refresh), .chSchedAvailableCMD(chSchedAvailableCMD), .chSchedAvailableCMDDQ(chSchedAvailableCMDDQ)
     );
 
-    RankFSM  RankFiniteStateMachine (
+    RankExecutionUnit  RankFiniteStateMachine (
         .clk(clk), .rst(rst), .chMode(chSchedWriteMode),
         
         .ReadPreAck(bufReadPreACK), .WritePreAck(bufWritePreACK),

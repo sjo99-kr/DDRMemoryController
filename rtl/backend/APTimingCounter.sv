@@ -3,9 +3,6 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 //      APTimingCounter
 //
-//      Author : Seongwon Jo
-//      Date   : 2026.02
-//
 //      1) Manages Auto-Precharge (AP) timing based on tRP and tWR constraints
 //          in the Rank Scheduler.
 //
@@ -20,7 +17,6 @@
 //         - Timing Granularity:
 //             * Managed per-bank (row-buffer–level precharge)
 //
-//
 // Notes:
 //   - This module does NOT issue DRAM commands.
 //   - It only tracks AP-in-progress states and exposes per-bank blocking signals.
@@ -28,14 +24,18 @@
 // Mode Selection:
 //   - mode = 0 : READ COMMAND WITH AUTO PRECHARGE  (TIME : tRP)
 //   - mode = 1 : WRITE COMMAND WITH AUTO PRECHARGE (TIME : tWR+tRP)
+//
+//      Author  : Seongwon Jo
+//      Created : 2026.02
+//
 //////////////////////////////////////////////////////////////////////////////////////////
 
 module APTimingCounter#(
-    parameter int NUMBANK = 4,
-    parameter int NUMBANKGROUP = 4,
-    parameter int TOTALBANKS = NUMBANK * NUMBANKGROUP,
-    parameter int tRP = 16,
-    parameter int tWR = 18
+    parameter int NUMBANK       = 4,
+    parameter int NUMBANKGROUP  = 4,
+    parameter int TOTALBANKS    = NUMBANK * NUMBANKGROUP,
+    parameter int tRP           = 16,
+    parameter int tWR           = 18
 )(
         input logic clk,
         input logic rst,
@@ -48,23 +48,19 @@ module APTimingCounter#(
     );
 
     localparam int COUNTER_WIDTH = $clog2(tRP+tWR+1);
-    localparam int BK_W = $clog2(NUMBANK);
-    localparam int BG_W = $clog2(NUMBANKGROUP);
+    localparam int BK_W          = $clog2(NUMBANK);
+    localparam int BG_W          = $clog2(NUMBANKGROUP);
     
-    
-    
-
     logic bankReqState [TOTALBANKS - 1 :0];
+
 //  bankReqState[i] == 1 : Auto-Precharge is pending or in progress for bank i
     
     logic [COUNTER_WIDTH-1:0] load;
     logic [COUNTER_WIDTH-1:0] bankCounter [TOTALBANKS - 1 :0];
     logic countFlag [TOTALBANKS - 1 :0];
 
-
-    assign load =(mode) ? (tRP+tWR) - 1 : tRP-1;
  
-    always_ff@(posedge clk or negedge rst) begin : BANKSTATEWINDOW
+    always_ff@(posedge clk or negedge rst) begin : BankStateWindow
         if(!rst) begin
             for(int i = 0; i< TOTALBANKS; i++) begin
                 bankReqState[i] <= 0;                    // Initialization for BankState
@@ -79,9 +75,9 @@ module APTimingCounter#(
                 end
             end 
         end
-    end : BANKSTATEWINDOW
+    end : BankStateWindow
 
-    always_ff@(posedge clk or negedge rst) begin : PerBANKCounterSetup
+    always_ff@(posedge clk or negedge rst) begin : PerBankCounterSetup
         if(!rst) begin
             for(int i = 0; i < TOTALBANKS; i++)begin
                 bankCounter[i] <= 0;                        // Initialization for BankCounter
@@ -102,9 +98,12 @@ module APTimingCounter#(
                 end
             end       
         end
-    end : PerBANKCounterSetup
+    end : PerBankCounterSetup
 
-    always_ff@(posedge clk or negedge rst )begin : PerBANKCounterFlagSetup
+    assign load = (mode) ? (tRP+tWR) - 1 : tRP-1;
+
+
+    always_ff@(posedge clk or negedge rst ) begin : PerBankCounterFlagSetup
         if(!rst) begin
             for(int i = 0; i< TOTALBANKS; i ++)begin
                 countFlag[i] <= 0;
@@ -133,7 +132,7 @@ module APTimingCounter#(
                 end
             end
         end
-    end : PerBANKCounterFlagSetup
+    end : PerBankCounterFlagSetup
 
     assign bankState = bankReqState; 
 endmodule

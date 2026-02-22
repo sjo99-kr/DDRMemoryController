@@ -17,7 +17,7 @@
 //
 //      Constraints:
 //          - Only one RankController can be granted per cycle.
-//          - RankControllers waiting on internal timing (FSMWait) are excluded.
+//          - RankControllers waiting on internal timing (i.e., tRCD, tRP, tRFC) are excluded.
 //          - Separate handling for READ and WRITE modes.
 //
 //      Outputs:
@@ -47,19 +47,19 @@ module CMDGrantScheduler#(
     input logic [$clog2(WRITECMDQUEUEDEPTH)-1:0] writeReqCnt [NUMRANK-1:0],     //  5. Per-RankController Write Req Cnt              //
     input logic grantACK,                                                       //  6. GrantACK signal from RankController           //
     input logic writeMode,                                                      //  7. Channel Mode                                  //
-    input logic CMDRankTurnaround,
-    output logic [NUMRANK-1:0] CMDGrantVector,                                  //  8. Granted signal for specific RankCtrl.         //
-    output logic rankTransition                                                 //  9. Rank Change signal                            //
+    input logic CMDRankTurnaround,                                              //  8. Rank Trunaround Available Signal (free tRTR)  //
+    output logic [NUMRANK-1:0] CMDGrantVector,                                  //  9. Granted signal for specific RankCtrl.         //
+    output logic rankTransition                                                 // 10. Rank Change signal                            //
     
     );
 
     logic [NUMRANK-1:0] lfsr;                                                   // Linear Feedback Shift Register, Providing Randomess
     logic [NUMRANK-1:0] masked;                                                 // Masked bits for making randomess in valid vector 
-    logic tie_break;
+    logic tie_break;                                                            // tie_break for the case of same requests in all ranks.
     
     logic [NUMRANK-1:0] next_cmd;                                               // Next granted RankController, One-hot vector 
     logic [NUMRANK-1:0] prev_cmd;                                               // Current granted RankController, One-hot vector                       
-    logic [NUMRANK-1:0] avail;                                                  // Available RankController, based on Ready, FSMWait signal
+    logic [NUMRANK-1:0] avail;                                                  // Available RankController, based on Ready to Issue CMD, FSMWait signal
 
     logic [$clog2(READCMDQUEUEDEPTH)-1:0] RDmaxCnt, RDminCnt;                   // Read Max Counter / Read Max Counter
     logic [$clog2(WRITECMDQUEUEDEPTH)-1:0] WRmaxCnt, WRminCnt;                  // Write Max Counter / Write Min Counter
@@ -73,7 +73,7 @@ module CMDGrantScheduler#(
     //      - Generates a simple pseudo-random sequence
     //      - Used only for tie-breaking when multiple ranks have equal priority
     //------------------------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
+    always_ff @(posedge clk or negedge rst) begin : MakingPseudoRandomLFSR
         // Pseudo random generator
         if (!rst) begin
             lfsr <= {{(NUMRANK-1){1'b0}}, 1'b1};
@@ -81,7 +81,7 @@ module CMDGrantScheduler#(
             lfsr <= {lfsr[NUMRANK-2:0],
                     lfsr[NUMRANK-1] ^ lfsr[NUMRANK-2]};
         end
-    end
+    end : MakingPseudoRandomLFSR
 
     `ifdef DISPLAY
     //------------------------------------------------------------------------------
@@ -91,20 +91,20 @@ module CMDGrantScheduler#(
     //      - Reports rank-to-rank transitions on CMD bus
     //------------------------------------------------------------------------------
     logic [$clog2(NUMRANK):0] granted_rank;
-    always_comb begin
+    always_comb begin : GrantedRankCheckForDebug
         granted_rank  = 0;
         for(int i =0; i< NUMRANK; i++)begin
             if(CMDGrantVector[i] == 1)begin
                 granted_rank = i;
             end
         end
-    end
+    end : GrantedRankCheckForDebug
 
-    always_ff@(posedge clk) begin
+    always_ff@(posedge clk) begin : GrantedRankDisplayForDebug
         if(rankTransition) begin
             $display("[%0t] CMDGrantScheduler | RANK TRANSITION OCCURED", $time);            
         end
-    end
+    end : GrantedRankDisplayForDebug
     `endif
 
     //-------------------------------------------------------------------//
@@ -123,7 +123,7 @@ module CMDGrantScheduler#(
     //      Result:
     //          - next_cmd is a one-hot vector indicating the selected rank
     //------------------------------------------------------------------------------
-    always_comb begin
+    always_comb begin : CalculatingNextTargetRank
         next_cmd = '0;
         avail = '0;
         
@@ -156,9 +156,9 @@ module CMDGrantScheduler#(
                         end
                     end
                 end
-                if(WRmaxCnt == WRminCnt) begin
+                if(WRmaxCnt == WRminCnt) begin      // If the requests in ranks are same, then we need to break the tie
                     tie_break = 1;
-                end else begin
+                end else begin                      // Else, then just set the deepest target rank
                     tie_break = 0;
                     next_cmd[maxIndex] = 1;
                 end
@@ -182,12 +182,12 @@ module CMDGrantScheduler#(
                 end
             end
 
-            if(tie_break)begin
+            if(tie_break)begin              // If the tie_break is required, we utilize the pesudo random value from LFSR
                 if(writeMode) begin
-                    if(&masked == 0) begin
-                        next_cmd = avail & (~avail + 1);
+                    if(&masked == 0) begin         // If the masked from random value is set as zero-vector,
+                        next_cmd = avail & (~avail + 1);    // Then just select "Least Significant Bit(LSB) Priority Arbiter"
                     end else begin
-                        next_cmd = masked & (~masked + 1);
+                        next_cmd = masked & (~masked + 1);  // If the masked is not set as zero-vector, Then just select "LSB Priority Arbiter" on that.
                     end 
                 end else begin
                     if(&masked) begin
@@ -198,7 +198,7 @@ module CMDGrantScheduler#(
                 end
             end
         end
-    end
+    end : CalculatingNextTargetRank
 
 
     //------------------------------------------------------------------------------
@@ -209,20 +209,20 @@ module CMDGrantScheduler#(
     //          * No active grant exists (initial grant), or
     //          * Previous grant is acknowledged by RankController (grantACK)
     //------------------------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
+    always_ff @(posedge clk or negedge rst) begin : Arbitration
         if (!rst) begin
             CMDGrantVector <= '0;
         end else begin
-            if(CMDRankTurnaround) begin
-                if(CMDGrantVector == '0 && (next_cmd != '0)) begin       // Initialization
-                    CMDGrantVector <= next_cmd;
+            if(CMDRankTurnaround) begin         // Change of arbitration is only valid when it is free from tRTR timing constraint.
+                if(CMDGrantVector == '0 && (next_cmd != '0)) begin     
+                    CMDGrantVector <= next_cmd;                   // If there is no grant in current arbitration, but there is valid in next_cmd.    
                     `ifdef DISPLAY
                         $display("[%0t] CMDGrantScheduler | Rank-%0d FSM granted for CMD Bus", $time, granted_rank);
                     `endif 
                 end
 
-                else if(grantACK)begin
-                    if(next_cmd != '0) begin
+                else if(grantACK)begin          // GrantACK comes from the target rank controller.
+                    if(next_cmd != '0) begin    // If the grantACK comes, then we need to select new target rank for fairness.
                         CMDGrantVector <= next_cmd;
                         `ifdef DISPLAY
                             $display("[%0t] CMDGrantScheduler | Rank-%0d FSM granted for CMD Bus", $time, granted_rank);
@@ -233,15 +233,15 @@ module CMDGrantScheduler#(
                 end else if(avail == '0) begin
                     CMDGrantVector <= '0;
                 end else begin
-                    if( |(CMDGrantVector & next_cmd) == 1) begin
+                    if( |(CMDGrantVector & next_cmd) == 1) begin // if there is no grantACK yet, but the target rank is still valid, then we maintain that target rank.
                         CMDGrantVector <= CMDGrantVector;
                     end else begin
-                        CMDGrantVector <= next_cmd;
+                        CMDGrantVector <= next_cmd; // but the target rank is not valid, then we change the target rank.
                     end
                 end
             end
         end
-    end
+    end : Arbitration
 
     //------------------------------------------------------------------------------
     //   Rank Transition Detection
@@ -249,13 +249,13 @@ module CMDGrantScheduler#(
     //      - Detects changes in CMD bus ownership between cycles
     //      - Used by channel-wide timing logic to enforce tRTR constraint
     //------------------------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst) begin
+    always_ff @(posedge clk or negedge rst) begin : RankTransitionDetecting
         if (!rst)
             prev_cmd <= '0;
         else begin
             prev_cmd <= CMDGrantVector;
         end
-    end
+    end : RankTransitionDetecting
 
     assign rankTransition = (prev_cmd != CMDGrantVector);
 

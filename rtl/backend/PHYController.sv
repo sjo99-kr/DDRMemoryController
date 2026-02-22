@@ -52,16 +52,16 @@
 //------------------------------------------------------------------------------
 
 module PHYController #(
-    parameter int PHY_CHANNEL = 0,
-    parameter int MEM_DATAWIDTH = 64,
-    parameter int NUMRANK = 4,
-    parameter int BURST_LENGTH = 8,
-    parameter int PHYFIFOMAXENTRY = 4,
-    parameter int PHYFIFOREQUESTWINDOW = 8,
-    parameter int PHYFIFODEPTH = 32,
-    parameter int tCL = 16,
-    parameter int tCWL = 12,
-    parameter type MemoryAddress = logic
+    parameter int PHY_CHANNEL           = 0,
+    parameter int MEM_DATAWIDTH         = 64,
+    parameter int NUMRANK               = 4,
+    parameter int BURST_LENGTH          = 8,
+    parameter int PHYFIFOMAXENTRY       = 4,
+    parameter int PHYFIFOREQUESTWINDOW  = 8,
+    parameter int PHYFIFODEPTH          = 32,
+    parameter int tCL                   = 16,
+    parameter int tCWL                  = 12,
+    parameter type MemoryAddress        = logic
 )(
         // common
     input logic clk, rst, mode,                  
@@ -113,31 +113,31 @@ module PHYController #(
 
                                                                                 ////////////////////////////////////////////////////////
                                                                                 //          INPUT/OUTPUT FROM/TO DRAM-SIDE            //
-    DDR4Interface ddr4_dataBus                                            // 1. INPUT/OUTPUT FOR DQ BUS                         //
+    DDR4Interface ddr4_dataBus                                                  // 1. INPUT/OUTPUT FOR DQ BUS                         //
                                                                                 ////////////////////////////////////////////////////////
 );
 
 
     //              From/To ReadMode                //
-    logic readInFlag, readOutFlag;                          //  ReadInFlag : DRAM -> PHY, ReadOutFlag : PHY -> READ BUFFER
-    logic [$clog2(BURST_LENGTH)-1:0] readBurstInCnt;        //  Cnt. of read Burst Data (PHY <- DRAM-SIDE )
-    logic readReceivingACK;                                 // Only ACK when BURST_LENGTH of read data comes to READ Mode PHY.
-    logic [$clog2(PHYFIFOMAXENTRY)-1:0] InflightReadModeReq;   // Num. of Read data stay in ReadMode FIFO
-    logic [tCL-2:0] ReadRequestLatency;                     //  tCL timing counter for each Issued Read Request
+    logic readInFlag, readOutFlag;                              //  ReadInFlag : DRAM -> PHY, ReadOutFlag : PHY -> READ BUFFER
+    logic [$clog2(BURST_LENGTH)-1:0] readBurstInCnt;            //  Cnt. of read Burst Data (PHY <- DRAM-SIDE )
+    logic readReceivingACK;                                     // Only ACK when BURST_LENGTH of read data comes to READ Mode PHY.
+    logic [$clog2(PHYFIFOMAXENTRY)-1:0] InflightReadModeReq;    // Num. of Read data stay in ReadMode FIFO
+    logic [tCL-2:0] ReadRequestLatency;                         //  tCL timing counter for each Issued Read Request
     //////////////////////////////////////////////////
 
     //           From/To WriteMode                  //
     logic writeOutFlag;                                         //  WriteOutFlag  :  PHY -> DRAM 
     logic writeServingACK;                                      //  ACK signal from WriteModePHY
-    logic [$clog2(PHYFIFOMAXENTRY)-1:0] TimedWriteReqCnt;          //  Num. of Write Data passed "tCWL" timing constratins in WriteMode FIFO
-    logic [$clog2(PHYFIFOMAXENTRY)-1:0] InflightWriteModeReq;      //  Num. of Write Data stay in WriteMode FIFO.
+    logic [$clog2(PHYFIFOMAXENTRY)-1:0] TimedWriteReqCnt;       //  Num. of Write Data passed "tCWL" timing constratins in WriteMode FIFO
+    logic [$clog2(PHYFIFOMAXENTRY)-1:0] InflightWriteModeReq;   //  Num. of Write Data stay in WriteMode FIFO.
     logic [tCWL-2:0] WriteRequestLatency;                       //  tCWL timing Counter for each Issued Write Request
     //////////////////////////////////////////////////
     assign WriteModeACK = writeServingACK;
             
 
     logic ReadModeDqs_t, ReadModeDqs_c;
-    logic WriteModeDqs_t, WriteModeDqs_c, WriteModeDQS;
+    logic WriteModeDqs_t, WriteModeDqs_c;
     logic [MEM_DATAWIDTH-1:0] ReadModeData, WriteModeData;
 
     assign ReadModeDqs_t = (readInFlag) ? ddr4_dataBus.dqs_t  : 'z;
@@ -156,12 +156,9 @@ module PHYController #(
         .clk(clk), .rst(rst), .clk2x(clk2x),
         .dqs_t(ReadModeDqs_t), .dqs_c(ReadModeDqs_c),
         .inData(ReadModeData),
-
         .inflag(readInFlag), 
         .outflag(readOutFlag),
-
         .readDataACK(readReceivingACK),
-
         .outData(readBufferData), 
         .outDataValid(readBufferDataValid), 
         .outDataLast(readBufferDataLast)
@@ -174,19 +171,15 @@ module PHYController #(
         .BURST_LENGTH(BURST_LENGTH)
     ) PHYWriteMode_Instance (                 // Physical Write Mode Instance
         .clk(clk), .rst(rst), 
-
         .dqs_t(WriteModeDqs_t), .dqs_c(WriteModeDqs_c), 
         .outdata(WriteModeData),
         .outDM(ddr4_dataBus.dm_n),
-
         .clk2x(clk2x), 
         .inflag(writeBufferDataValid),
         .inData(writeBufferData),
         .inStrb(writeBufferDataStrb),
         .outflag(writeOutFlag), 
-        
-        .outACK(writeServingACK),
-        .WriteModeDQSValid(WriteModeDQS)
+        .outACK(writeServingACK)
     );
     `ifdef VERILATOR
         assign ddr4_dataBus.dqs_t  = (readInFlag == 1) ? '0 :  (writeOutFlag) ? WriteModeDqs_t : '0;
@@ -262,7 +255,7 @@ module PHYController #(
 
     //                      Timing WriteMode Requset Tracker                               //
     //  Write Buffer sends data when WRITE CMD ISSUED TO CMB/ADDR BUS.                     //
-    //  HOWEVER, For DQ-BUS perspective, WE NEED TO CONSIDER FOR tCWL Timing constraints.  //
+    //  HOWEVER, For DQ-BUS perspective, WE NEED TO CONSIDER for tCWL Timing constraints.  //
     //  So, We use double trackers one for avoiding FIFO spilling out (InflightWRModeReq), //
     // One for reflecting tCWL timing constraints (TimingWriteModeReqTracker).             //
     always_ff@(posedge clk or negedge rst) begin : TimingWriteModeReqTracker
@@ -281,24 +274,6 @@ module PHYController #(
         end
     end : TimingWriteModeReqTracker
 
-    //               WriteMode - Data Out Valid  (PHY -> DRAM)            //
-    //  In conclusion, "the data can be sent to DRAM in Write Mode" is      //
-    //  1) Data is in PHY FIFO; 2) The DATA already passed tCWL constraints //
-//    always_ff@(posedge clk or negedge rst) begin : WriteModeOutValid
-//        if(!rst) begin
-//            writeOutFlag <= 0;
-//       end else begin
-//            if(mode==1) begin
-//                if(InflightWriteModeReq != 0 && TimedWriteReqCnt != 0) begin
-//                    writeOutFlag <= 1;
-//                end else begin
-//                    writeOutFlag <= 0;
-//                end
-//            end else begin
-//                writeOutFlag <= 0;
-//            end
-//        end
-//    end : WriteModeOutValid
     assign writeOutFlag = (|InflightWriteModeReq) && (|TimedWriteReqCnt);
     
     //                   ReadMode - Data In Valid (DRAM -> PHY, tCL-aware)                 //

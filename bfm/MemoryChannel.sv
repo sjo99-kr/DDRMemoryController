@@ -20,9 +20,22 @@
 //      - No scheduling, reordering, or timing arbitration logic.
 //        (Handled by Memory Controller, not the DRAM model.)
 //
+//      Architectural Overview:
+//
+//            Channel DDR4 IF CMD / DQ BUS
+//                    |   ∧
+//                    V   |
+//                +--------------+
+//                | MemoryChannel|   (This module)
+//                +--------------+
+//                  |   |   |     |
+//              ----+   |   +---- +...  ----+
+//              |       |       |           |       
+//        RankFSM[0] RankFSM[1]   ...  RankFSM[N]
+//
 //  ASSUMPTIONS:
-//      - At most one rank drives read data at any given cycle.
-//      - All ranks observe identical CA/ADDR signals.
+//      - At most one rank drives read/write data at any given cycle.
+//      - All ranks observe identical CA/ADDR signals (arbitration is based on cs_n signal.).
 //      - Write data is broadcast and selectively consumed by target rank.
 //
 //  NOTES:
@@ -30,25 +43,28 @@
 //      - Electrical accuracy is abstracted; focus is protocol-level behavior.
 //      - Correctness relies on the controller obeying DDR timing rules.
 //
+//
+//      Author  : Seongwon Jo
+//      Created : 2026.02
 //------------------------------------------------------------------------------
 
 module MemoryChannel#(
-        parameter int CHANNELID = 0,
-        parameter int NUMRANK = 4,
-        parameter int IOWIDTH = 8,
-        parameter int DEVICEPERRANK = 4,
-        parameter int CWIDTH = 10,
-        parameter int RWIDTH = 15,
-        parameter int BGWIDTH = 2,
-        parameter int BKWIDTH = 2,
-        parameter int COMMAND_WIDTH = 18,
-        parameter int BURST_LENGTH = 8,
-        parameter int MEM_DATAWIDTH = 64,
-        parameter int tCWL = 12,
-        parameter int tCL = 16,
-        parameter int tRCD = 16,
-        parameter int tRFC = 256,
-        parameter int tRP = 16
+        parameter int CHANNELID      = 0,
+        parameter int NUMRANK        = 4,
+        parameter int IOWIDTH        = 8,
+        parameter int DEVICEPERRANK  = 4,
+        parameter int CWIDTH         = 10,
+        parameter int RWIDTH         = 15,
+        parameter int BGWIDTH        = 2,
+        parameter int BKWIDTH        = 2,
+        parameter int COMMAND_WIDTH  = 18,
+        parameter int BURST_LENGTH   = 8,
+        parameter int MEM_DATAWIDTH  = 64,
+        parameter int tCWL           = 12,
+        parameter int tCL            = 16,
+        parameter int tRCD           = 16,
+        parameter int tRFC           = 256,
+        parameter int tRP            = 16
     )(
         input logic clk, rst_n, clk2x,
         DDR4Interface.Memory_CA ddr4_cmdaddr_if,
@@ -64,8 +80,8 @@ module MemoryChannel#(
     //  - rankDQRdValid : Indicates which rank is driving read data
     //  - rankDQWrValid : Indicates which rank is consuming write data
     //-------------------------------------------------------------------------
-    logic [NUMRANK-1:0] rankDQRdValid;                      //  2. Read Burst Valid per Rank
-    logic [NUMRANK-1:0] rankDQWrValid;                      //  3. Write Burst Valid per Rank
+    logic [NUMRANK-1:0] rankDQRdValid;                      //  Read Burst Valid per Rank
+    logic [NUMRANK-1:0] rankDQWrValid;                      //  Write Burst Valid per Rank
 
     //-------------------------------------------------------------------------
     //  Channel-level DQS generation
@@ -73,8 +89,8 @@ module MemoryChannel#(
     //  - DQS is generated at the channel level and broadcast to all ranks.
     //  - Only driven during read bursts.
     //-------------------------------------------------------------------------
-    logic channelDQS_t, channelDQS_c;                       //  4. Broadcast DQS Singal for channel
-    logic channelDQRdValid, channelDQWrValid;               //  5. Channel Read or Write Burst Valid
+    logic channelDQS_t, channelDQS_c;                       //  Broadcast DQS Singal for channel
+    logic channelDQRdValid, channelDQWrValid;               //  Channel Read or Write Burst Valid
 
     //-------------------------------------------------------------------------
     //  Per-rank memory instantiation
@@ -144,7 +160,7 @@ module MemoryChannel#(
         end else begin
             if(channelDQRdValid) begin
                 channelDQS_t <= !channelDQS_t;
-                channelDQS_c <= channelDQS_t;
+                channelDQS_c <=  channelDQS_t;
             end else begin
                 channelDQS_t <= '0;
                 channelDQS_c <= '1;

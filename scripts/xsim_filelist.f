@@ -24,7 +24,7 @@
 ../rtl/backend/PHYController.sv
 ../rtl/backend/PHYReadMode.sv
 ../rtl/backend/PHYWriteMode.sv
-../rtl/backend/RankFSM.sv
+../rtl/backend/RankExecutionUnit.sv
 ../rtl/backend/RankSched.sv
 ../rtl/backend/RankController.sv
 ../rtl/backend/ReadBufferController.sv

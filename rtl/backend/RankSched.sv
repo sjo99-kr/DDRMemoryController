@@ -10,7 +10,7 @@
 //          - Buffers read/write requests from MC frontend.
 //          - Applies FR-FCFS policy with open-page awareness.
 //          - Manages refresh scheduling (tREFI).
-//          - Selects next request to issue to RankFSM.
+//          - Selects next request to issue to BankFSM.
 //          - Tracks open rows and request aging.
 //
 //      Scheduling Policy:
@@ -23,32 +23,32 @@
 //
 //      Scope & Notes:
 //          - Operates at rank granularity.
-//          - No command-level timing (handled by RankFSM).
-//          - One request issued at a time to RankFSM.
+//          - No command-level timing (handled by RankExecutionUnit).
+//          - One request issued at a time to RankExecutionUnit.
 //
 //      Author  : Seongwon Jo
 //      Created : 2026.02
 //------------------------------------------------------------------------------
 
 module RankSched #(
-    parameter int FSM_CHANNEL = 0,
-    parameter int FSM_RANK = 0,
+    parameter int FSM_CHANNEL        = 0,
+    parameter int FSM_RANK           = 0,
     
-    parameter int NUM_BANKFSM = 16,
-    parameter int NUM_BANKFSM_BIT = 4,
+    parameter int NUM_BANKFSM        = 16,
+    parameter int NUM_BANKFSM_BIT    = 4,
 
-    parameter int MEM_IDWIDTH = 4,
-    parameter int MEM_USERWIDTH = 1,
+    parameter int MEM_IDWIDTH        = 4,
+    parameter int MEM_USERWIDTH      = 1,
     parameter int READCMDQUEUEDEPTH  = 8,
     parameter int WRITECMDQUEUEDEPTH = 8,
     parameter int OPENPAGELISTDEPTH  = 16,
-    parameter int AGINGWIDTH = 10,
-    parameter int RWIDTH = 15,
-    parameter int CWIDTH = 10,
-    parameter int THRESHOLD = 512,
-    parameter int tREFI = 8192,
-    parameter type FSMRequest = logic,
-    parameter type MemoryAddress = logic
+    parameter int AGINGWIDTH         = 10,
+    parameter int RWIDTH             = 15,
+    parameter int CWIDTH             = 10,
+    parameter int THRESHOLD          = 512,
+    parameter int tREFI              = 8192,
+    parameter type FSMRequest        = logic,
+    parameter type MemoryAddress     = logic
 )(
     // Common
     input logic clk, rst,
@@ -62,31 +62,31 @@ module RankSched #(
     output logic RankReadReqReady,                    // Valid When RD Req. Que. is not full & RD MEM Buffer is available
     output logic RankWriteReqReady,                   // Valid When WR Req. Que. is not full & WR MEM Buffer is available
 
-                                                          //   Input from Channel Scheduler    //
-    input logic chSchedCMDOnlyValid,                  //  (Input from Channel Scheduler)   //
-    input logic chSchedCMDDQValid,                    //  (Input from Channel Scheduler)   //
+                                                      //         Input from Channel Scheduler        //
+    input logic chSchedCMDOnlyValid,                  //        (Input from Channel Scheduler)       //
+    input logic chSchedCMDDQValid,                    //        (Input from Channel Scheduler)       //
     input wire chSchedTransReady,
-    output logic chSchedAvailableCMD,                 //       (Output to RankFSM)         //
-    output logic chSchedAvailableCMDDQ,                //       (Output to RankFSM)         //
+    output logic chSchedAvailableCMD,                 //       (Output to RankExecutionUnit)         //
+    output logic chSchedAvailableCMDDQ,               //       (Output to RankExecutionUnit)         //
 
     input logic WriteMode,                            
 
     output logic chSchedRdReady,      
     output logic chSchedWrReady,
 
-    input logic fsmChSchedAck,                        //      (Input from RankFSM)         //    
-    input logic [NUM_BANKFSM-1:0] fsmWait,            //      (Input fron RankFSM)         //
-                                                      //  Valid when RankFSM is WAITING for DRAM TIMING CONSTRAINTS.    
-    output logic chSchedACK,                          //       (Output to RankFSM)         //
-    output logic chSchedIdle,                         //       (Output to RankFSM)         //
+    input logic fsmChSchedAck,                        //      (Input from RankExecutionUnit)         //    
+    input logic [NUM_BANKFSM-1:0] fsmWait,            //      (Input fron RankExecutionUnit)         //
+                                                      //  Valid when RankExecutionUnit is WAITING for DRAM TIMING CONSTRAINTS.    
+    output logic chSchedACK,                          //       (Output to RankExecutionUnit)         //
+    output logic chSchedIdle,                         //       (Output to RankExecutionUnit)         //
         
     output logic [$clog2(READCMDQUEUEDEPTH)-1:0] chSchedReadReqCnt,
     output logic [$clog2(WRITECMDQUEUEDEPTH)-1:0] chSchedWriteReqCnt,
 
-    input logic rdBufAvailable,                       //    (Input from MEM Buffer)      //
-    input logic wrBufAvailable,                       //    (Input from MEM Buffer)      //
-    output logic fsmWrBufValid,                       //        (Ouput to RankFSM)       //
-    output logic fsmRdBufValid,                       //        (Ouput to RankFSM)       //
+    input logic rdBufAvailable,                       //         (Input from MEM Buffer)           //
+    input logic wrBufAvailable,                       //         (Input from MEM Buffer)           //
+    output logic fsmWrBufValid,                       //        (Ouput to RankExecutionUnit)       //
+    output logic fsmRdBufValid,                       //        (Ouput to RankExecutionUnit)       //
 
     output logic [MEM_IDWIDTH-1:0] readBufReqId, 
     output logic [MEM_USERWIDTH-1:0] readBufReqUser,
@@ -95,8 +95,8 @@ module RankSched #(
     output logic [MEM_USERWIDTH-1:0] writeBufReqUser,
     output logic writeBufReqACK,
 
-    input logic [NUM_BANKFSM-1:0] fsmIdle,            // Valid when RankFSM is Idle State, Ready for receiving NEW REQUEST.
-    input logic fsmRefreshAck,                        // Valid when RankFSM finished Refresh phase.
+    input logic [NUM_BANKFSM-1:0] fsmIdle,            // Valid when RankExecutionUnit is Idle State, Ready for receiving NEW REQUEST.
+    input logic fsmRefreshAck,                        // Valid when RankExecutionUnit finished Refresh phase.
     output logic refresh,                             // Valid when the timing for tREFI is set.
 
     input logic [MEM_IDWIDTH-1:0] fsmBufWrReqId, fsmBufRdReqId,
@@ -104,8 +104,8 @@ module RankSched #(
     input logic fsmBufWrReqIssued,                 
     input logic fsmBufRdReqIssued,
 
-    output logic [NUM_BANKFSM-1:0] fsmIssue,                            // Valid when Request Scheduler sends Request to RankFSM.
-    output FSMRequest fsmIssuedReq,                       // Request for RankFSM when RankFSM is Idle.
+    output logic [NUM_BANKFSM-1:0] fsmIssue,           // Valid when Request Scheduler sends Request to RankExecutionUnit.
+    output FSMRequest fsmIssuedReq,                    // Request for RankExecutionUnit when RankExecutionUnit is Idle.
 
     output logic issuable
     );
@@ -122,7 +122,7 @@ module RankSched #(
     assign chSchedAvailableCMD = chSchedCMDOnlyValid;
     assign chSchedAvailableCMDDQ = chSchedCMDDQValid;
 
-    //                  MEMBuffer-side <-> RankSched/FSM                   //
+    //                  MEMBuffer-side <-> RankSched/RankExecutionUnit                   //
     assign readBufReqId = fsmBufRdReqId;
     assign readBufReqUser = fsmBufRdReqUser;
 
@@ -162,9 +162,9 @@ module RankSched #(
     logic WriteReqQueFull, WriteReqQueEmpty;
 
     //            OpenPagePolicy management  (OpenPagePolicy List)         //
-    OpenRowEntry OpenRowList [OPENPAGELISTDEPTH - 1 : 0 ];              // OpenRowDepth -> Num. of BankGroup * Num. of Bank., One bank has one Row (Page).
+    OpenRowEntry OpenRowList [OPENPAGELISTDEPTH - 1 : 0 ];         // OpenRowDepth -> Num. of BankGroup * Num. of Bank., One bank has one Row (Page).
     logic checkThreshold;                                          // Threshold for blocking starvation in Request Queue. (request aging)
-    logic [$clog2(CMDQUEUEDEPTH) - 1 : 0] MaxValue;                  // MaxValue for Oldes Entry in Request Queue.
+    logic [$clog2(CMDQUEUEDEPTH) - 1 : 0] MaxValue;                // MaxValue for Oldes Entry in Request Queue.
     
     logic [1:0] PageHitT;                                          // PageHit indicates a row-hit condition within a bank.
                                                                    // In a row-hit case, READ or WRITE commands can be issued
@@ -189,12 +189,18 @@ module RankSched #(
     // AutoPrecharge Commnad
     logic checkAutoPrecharge;
 
+    logic [$clog2(CMDQUEUEDEPTH) - 1 : 0] MaxValue_reg;
+    logic NextPageHitS_reg, NextPageHitL_reg;
+    logic checkThreshold_reg;
+    logic SchedValid_2, SchedValid_3;
+    logic [$clog2(CMDQUEUEDEPTH) -1 :0] PageHitIndexS_reg, PageHitIndexL_reg;
+
     //------------------------------------------------------------------------------
     //  Refresh Scheduler
     //
     //  - Tracks refresh interval (tREFI).
     //  - Issues rank-level refresh request when interval expires.
-    //  - Refresh is only triggered when RankFSM is idle.
+    //  - Refresh is only triggered when RankExecutionUnit is idle.
     //
     //------------------------------------------------------------------------------
     always_ff@(posedge clk or negedge rst)begin
@@ -209,13 +215,13 @@ module RankSched #(
                     refresh_cnt <= 0;
                 end
             end else begin
-                if(fsmRefreshAck) begin                     // ACK from RankFSM for Refreshing done.
+                if(fsmRefreshAck) begin                     // ACK from RankExecutionUnit for Refreshing done.
                     refreshing <= 0; 
                 end
             end
         end
     end
-    assign refresh = refreshing;            // Refresh send when RankFSM is IDLE.  
+    assign refresh = refreshing;            // Refresh send when RankExecutionUnit is IDLE.  
                                                             // (TODO) : Refresh needs to be availble whenever the flag is set on.
     //////////////////////////////////////////////////////////////////////////
 
@@ -267,7 +273,7 @@ module RankSched #(
     //  Request Queue Management
     //
     //  - Pushes incoming requests from MC frontend.
-    //  - Pops selected request when RankFSM is idle.
+    //  - Pops selected request when RankExecutionUnit is idle.
     //  - Maintains free-slot bitmap and push/pop pointers.
     //  - Includes structural hazard assertions.
     //
@@ -310,7 +316,7 @@ module RankSched #(
             end
             //     POP Phase: Poping Req. Request Que. and send to RankFSM   //
             if(fsmIdle[{ReadRequestQueue[ReadPopPtr].mem_addr.bankgroup, ReadRequestQueue[ReadPopPtr].mem_addr.bank}]
-                 && !ReadReqQueFree[ReadPopPtr] && !WriteMode && !refreshing && !chSchedTransReady) begin 
+                 && !ReadReqQueFree[ReadPopPtr] && !WriteMode && !refreshing && !chSchedTransReady && SchedValid_3) begin 
                 // For Read Request Case (Initialization for Request Queue)
                 ReadRequestQueue[ReadPopPtr].mem_addr <= 0; 
                 ReadRequestQueue[ReadPopPtr].req_type <= 0;
@@ -319,7 +325,7 @@ module RankSched #(
                 ReadReqQueFree[ReadPopPtr] <= 1;
             end 
             if(fsmIdle[{WriteRequestQueue[WritePopPtr].mem_addr.bankgroup, WriteRequestQueue[WritePopPtr].mem_addr.bank}]
-                && !WriteReqQueFree[WritePopPtr] && WriteMode && !refreshing && !chSchedTransReady) begin
+                && !WriteReqQueFree[WritePopPtr] && WriteMode && !refreshing && !chSchedTransReady && SchedValid_3) begin
                 // For Write Request Case (Initialization for Request Queue)
                 WriteRequestQueue[WritePopPtr].mem_addr <= 0; 
                 WriteRequestQueue[WritePopPtr].req_type <= 0;
@@ -359,7 +365,7 @@ module RankSched #(
     //  Request Aging Tracker
     //
     //  - Increments per-request age counters.
-    //  - Resets age when request is issued to RankFSM.
+    //  - Resets age when request is issued to RankExecutionUnit.
     //  - Enables starvation prevention via threshold logic.
     //
     //------------------------------------------------------------------------------
@@ -384,11 +390,11 @@ module RankSched #(
                 end
             end
             if(fsmIdle[{ReadRequestQueue[ReadPopPtr].mem_addr.bankgroup, ReadRequestQueue[ReadPopPtr].mem_addr.bank}] 
-            && !ReadReqQueFree[ReadPopPtr] && !WriteMode && !refreshing && !chSchedTransReady) begin // Condition for Sending Req. to RankFSM
+            && !ReadReqQueFree[ReadPopPtr] && !WriteMode && !refreshing && !chSchedTransReady && SchedValid_3) begin // Condition for Sending Req. to RankFSM
                 ReadRequestQueue[ReadPopPtr].cnt <= 0;
             end
             if(fsmIdle[{WriteRequestQueue[WritePopPtr].mem_addr.bankgroup, WriteRequestQueue[WritePopPtr].mem_addr.bank}] 
-            && !WriteReqQueFree[WritePopPtr] && WriteMode && !refreshing && !chSchedTransReady) begin // Condition for Sending Req. to RankFSM
+            && !WriteReqQueFree[WritePopPtr] && WriteMode && !refreshing && !chSchedTransReady && SchedValid_3) begin // Condition for Sending Req. to RankFSM
                 WriteRequestQueue[WritePopPtr].cnt <= 0;
             end
 
@@ -398,18 +404,18 @@ module RankSched #(
     
 
     //------------------------------------------------------------------------------
-    //  RankFSM Issue Logic & Open-Page Update
+    //  RankExecutionUnit Issue Logic & Open-Page Update
     //
-    //  - Issues selected request to RankFSM.
+    //  - Issues selected request to RankExecutionUnit.
     //  - Updates OpenRowList on ACT / Auto-Precharge.
     //  - Clears open-page state on refresh completion.
     //
     //------------------------------------------------------------------------------
     always_ff@(posedge clk or negedge rst) begin
         if(!rst) begin
-            fsmIssuedReq <= '0;                 //  Request to RankFSM
+            fsmIssuedReq <= '0;                 //  Request to RankExecutionUnit
             for(int j = 0; j < NUM_BANKFSM; j++) begin
-                fsmIssue[j] <= 0;               //  Valid when issuing REQUEST to RankFSM
+                fsmIssue[j] <= 0;               //  Valid when issuing REQUEST to RankExecutionUnit
             end
             for(int i = 0; i < OPENPAGELISTDEPTH; i++)begin
                 OpenRowList[i] <= '0;           // Initialization of OpenRowList
@@ -421,9 +427,9 @@ module RankSched #(
                     OpenRowList[i] <= '0;
                 end
             end
-            if (!refreshing && !chSchedTransReady) begin      // Sending Request to RankFSM based on the Condition.
+            if (!refreshing && !chSchedTransReady) begin      // Sending Request to RankExecutionUnit based on the Condition.
                 if(fsmIdle[{ReadRequestQueue[ReadPopPtr].mem_addr.bankgroup, ReadRequestQueue[ReadPopPtr].mem_addr.bank}] &&
-                !WriteMode && !ReadReqQueFree[ReadPopPtr]) begin 
+                !WriteMode && !ReadReqQueFree[ReadPopPtr] && SchedValid_3) begin 
                     fsmIssuedReq.mem_addr <= ReadRequestQueue[ReadPopPtr].mem_addr;
                     fsmIssuedReq.req_type <= ReadRequestQueue[ReadPopPtr].req_type;
                     {fsmIssuedReq.PageHit, fsmIssuedReq.PageMiss, fsmIssuedReq.PageEmpty} <= {PageHitT, PageMissT, PageEmptyT};
@@ -449,7 +455,7 @@ module RankSched #(
                         `endif                        
                     end
                 end else if(fsmIdle[{WriteRequestQueue[WritePopPtr].mem_addr.bankgroup, WriteRequestQueue[WritePopPtr].mem_addr.bank}] && 
-                    WriteMode && !WriteReqQueFree[WritePopPtr]) begin
+                    WriteMode && !WriteReqQueFree[WritePopPtr] && SchedValid_3) begin
                     // Write Request Serving
                     fsmIssuedReq.mem_addr <= WriteRequestQueue[WritePopPtr].mem_addr;
                     fsmIssuedReq.req_type <= WriteRequestQueue[WritePopPtr].req_type;
@@ -490,10 +496,10 @@ module RankSched #(
     logic issuableCheck, readIssuable, writeIssuable;
     assign issuableCheck =  (!refreshing && !chSchedTransReady);
     assign readIssuable = fsmIdle[{ReadRequestQueue[ReadPopPtr].mem_addr.bankgroup, ReadRequestQueue[ReadPopPtr].mem_addr.bank}] &&
-                !WriteMode && !ReadReqQueFree[ReadPopPtr];
+                !WriteMode && !ReadReqQueFree[ReadPopPtr] && SchedValid_3;
 
     assign writeIssuable = fsmIdle[{WriteRequestQueue[WritePopPtr].mem_addr.bankgroup, WriteRequestQueue[WritePopPtr].mem_addr.bank}] && 
-                    WriteMode && !WriteReqQueFree[WritePopPtr];
+                    WriteMode && !WriteReqQueFree[WritePopPtr] && SchedValid_3;
                 
 
     assign issuable = (WriteMode) ? writeIssuable : readIssuable;
@@ -511,7 +517,7 @@ module RankSched #(
     function automatic logic ReadOpenPagePolicyShort(input logic [$clog2(CMDQUEUEDEPTH) -1 : 0] i);
         //////////////////////        Condition for Open for Short tCCD               /////////////////////
         // 1) Row Hit : Row of the target Request in Request Queue is SAME with the row in OpenPageList. //
-        // 2) Request Valid : Request in Request Queue is valid for sending to RankFSM                   //
+        // 2) Request Valid : Request in Request Queue is valid for sending to RankExecutionUnit         //
         // 3) Same BG with Prior Req. : BankGroup (BG) of target Req is SAME with BG with Prior Req.     //
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         if(ReadRequestQueue[i].mem_addr.row == OpenRowList[{ReadRequestQueue[i].mem_addr.bankgroup, ReadRequestQueue[i].mem_addr.bank}].RowAddr
@@ -524,7 +530,7 @@ module RankSched #(
 
         //////////////////////        Condition for Open for Short tCCD               /////////////////////
         // 1) Row Hit : Row of the target Request in Request Queue is SAME with the row in OpenPageList. //
-        // 2) Request Valid : Request in Request Queue is valid for sending to RankFSM                   //
+        // 2) Request Valid : Request in Request Queue is valid for sending to RankExecutionUnit         //
         // 3) Diff BG with Prior Req. : BankGroup (BG) of target Req is NOT SAME with BG with Prior Req. //
         ///////////////////////////////////////////////////////////////////////////////////////////////////
     function automatic logic ReadOpenPagePolicyLong(input logic [$clog2(CMDQUEUEDEPTH)-1 : 0] i);
@@ -625,6 +631,9 @@ module RankSched #(
     end
 
     //   Candidate 3: Under NO PAGEHIT, Oldest Request   PRIORITY: 4 (1)  //
+    logic SchedValid_1;
+    assign SchedValid_1 = (!(&ReadReqQueFree) && !WriteMode) || (!(&WriteReqQueFree) && WriteMode);
+
     always_comb begin 
         MaxValue = 0;
         if(!WriteMode)begin
@@ -677,7 +686,9 @@ module RankSched #(
     end
 
     //------------------------------------------------------------------------------
-    //  FR-FCFS Final Selection
+    //  FR-FCFS Final Selection (2-stage Pipeline )
+    //      Stage 1. Calculating candidates
+    //      Stage 2. Update Read/Write Pop Pointer (Candidate selection)
     //
     //  Priority Order:
     //      1) Requests beyond aging threshold
@@ -690,82 +701,104 @@ module RankSched #(
     //  - Decides auto-precharge behavior.
     //
     //------------------------------------------------------------------------------
-    always_comb begin //FR-FCFS
-        ReadPopPtr = 0;
-        WritePopPtr = 0 ;
-        checkAutoPrecharge  = 0;
-        if(!WriteMode) begin 
-            // Read Request Serving
-            if(checkThreshold) begin                        // PRIORITY 1: Beyond Threshold, MOST AGING REQUEST
-                ReadPopPtr = MaxValue;
-                if(ReadOpenPagePolicyShort(MaxValue))begin
-                    {PageHitT, PageMissT, PageEmptyT} =  4'b1000;
-                end
-                else if(ReadOpenPagePolicyLong(MaxValue)) begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b1100;
-                end
 
-                else if(OpenRowList[{ReadRequestQueue[MaxValue].mem_addr.bankgroup, ReadRequestQueue[MaxValue].mem_addr.bank}].valid) begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b0010;
-                    checkAutoPrecharge = 1;                          // SPECULATIVE FOR MOST AGING REQUEST ON AUTO-PRECHARGE.
-                                                                     // (TODO) Design Much More fancy scheme for eviction of entry in OpenPageList.
-                end
-                else begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b0001;
-                end
-            end
-            else if(NextPageHitS) begin                     // PRIORITY 2: Case of PageHit & Short_tCCD
-                ReadPopPtr = PageHitIndexS;
-                {PageHitT, PageMissT, PageEmptyT} = 4'b1000;
-            end
-            else if(NextPageHitL) begin                     // PRIORITY 3: Case of PageHit & Long_tCCD
-                ReadPopPtr = PageHitIndexL;
-                {PageHitT, PageMissT, PageEmptyT} = 4'b1100;
-            end
-            else begin                                      // PRIORITY 4: Case of Aging-based Request Selection
-                ReadPopPtr = MaxValue;
-                if(OpenRowList[{ReadRequestQueue[MaxValue].mem_addr.bankgroup, ReadRequestQueue[MaxValue].mem_addr.bank}].valid) begin
-                    {PageHitT, PageMissT, PageEmptyT}  =  4'b0010;
-                end else begin
-                    {PageHitT, PageMissT, PageEmptyT} =  4'b0001;
-                end
-            end
+
+
+    always_ff@(posedge clk or negedge rst) begin : SchedulingStage1
+        if (!rst) begin
+            MaxValue_reg             <= 0;
+            checkThreshold_reg       <= 0;
+            NextPageHitS_reg         <= 0;
+            NextPageHitL_reg         <= 0;
+            SchedValid_2             <= 0;
         end else begin
-        // Write Request Serving
-            if(checkThreshold) begin                        // PRIORITY 1: Beyond Threshold, MOST AGING REQUEST
-                WritePopPtr = MaxValue;
-                if(WriteOpenPagePolicyShort(MaxValue))begin
-                    {PageHitT, PageMissT, PageEmptyT} =  4'b1000;
-                end
-                else if(WriteOpenPagePolicyLong(MaxValue)) begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b1100;
-                end
-
-                else if(OpenRowList[{WriteRequestQueue[MaxValue].mem_addr.bankgroup, WriteRequestQueue[MaxValue].mem_addr.bank}].valid) begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b0010;
-                    checkAutoPrecharge = 1;
-                end
-                else begin
-                    {PageHitT, PageMissT, PageEmptyT} = 4'b0001;
-                end
-            end
-            else if(NextPageHitS) begin                     // PRIORITY 2: Case of PageHit & Short_tCCD
-                WritePopPtr = PageHitIndexS;
-                {PageHitT, PageMissT, PageEmptyT} = 4'b1000;
-            end
-            else if(NextPageHitL) begin                     // PRIORITY 3: Case of PageHit & Long_tCCD
-                WritePopPtr = PageHitIndexL;
-                {PageHitT, PageMissT, PageEmptyT} = 4'b1100;
-            end
-            else begin                                      // PRIORITY 4: Case of Aging-based Request Selection
-                WritePopPtr = MaxValue;
-                if(OpenRowList[{WriteRequestQueue[MaxValue].mem_addr.bankgroup, WriteRequestQueue[MaxValue].mem_addr.bank}].valid) begin
-                    {PageHitT, PageMissT, PageEmptyT}  =  4'b0010;
-                end else begin
-                    {PageHitT, PageMissT, PageEmptyT} =  4'b0001;
-                end
-            end        
+            MaxValue_reg         <= MaxValue;
+            checkThreshold_reg   <= checkThreshold;
+            NextPageHitS_reg     <= NextPageHitS;
+            NextPageHitL_reg     <= NextPageHitL;
+            SchedValid_2         <= SchedValid_1;
+            PageHitIndexS_reg    <= PageHitIndexS;
+            PageHitIndexL_reg    <= PageHitIndexL;
         end
-    end
+    end : SchedulingStage1
+
+    
+    always_ff@(posedge clk or negedge rst) begin : SchedulingStage2
+        if (!rst) begin
+            ReadPopPtr   <= 0;
+            WritePopPtr  <= 0;
+            SchedValid_3 <= 0;
+        end else begin
+            if(!WriteMode) begin
+                if(checkThreshold_reg) begin
+                    ReadPopPtr   <= MaxValue_reg;
+                    SchedValid_3 <= SchedValid_2;
+                    if(ReadOpenPagePolicyShort(MaxValue_reg)) begin
+                        {PageHitT, PageMissT, PageEmptyT} <= 4'b1000;
+                    end else if(ReadOpenPagePolicyLong(MaxValue_reg)) begin
+                        {PageHitT, PageMissT, PageEmptyT} <= 4'b1100;
+                    end else if(OpenRowList[{ReadRequestQueue[MaxValue_reg].mem_addr.bankgroup, 
+                                    ReadRequestQueue[MaxValue_reg].mem_addr.bank}].valid) begin
+                        {PageHitT, PageMissT, PageEmptyT} <= 4'b0010;
+                        checkAutoPrecharge                <= 1;
+                    end else begin
+                        {PageHitT, PageMissT, PageEmptyT} <= 4'b0001;
+                    end
+                end else if(NextPageHitS_reg) begin
+                    ReadPopPtr                        <= PageHitIndexS_reg;
+                    {PageHitT, PageMissT, PageEmptyT} <= 4'b1000;
+                    SchedValid_3                      <= SchedValid_2;
+                end else if(NextPageHitS_reg) begin
+                    ReadPopPtr <= PageHitIndexL_reg;
+                    {PageHitT, PageMissT, PageEmptyT} <= 4'b1100;
+                    SchedValid_3 <= SchedValid_2;
+                end else begin
+                    ReadPopPtr <= MaxValue_reg;
+                    SchedValid_3 <= SchedValid_2;
+                    if(OpenRowList[{ReadRequestQueue[MaxValue_reg].mem_addr.bankgroup, 
+                                ReadRequestQueue[MaxValue_reg].mem_addr.bank}].valid) begin
+                        {PageHitT, PageMissT, PageEmptyT} <=  4'b0010;
+                    end else begin
+                        {PageHitT, PageMissT, PageEmptyT} <=  4'b0001;
+                    end
+                end
+            end else begin
+                if(checkThreshold_reg) begin
+                    WritePopPtr  <= MaxValue_reg;
+                    SchedValid_3 <= SchedValid_2;
+                    if(WriteOpenPagePolicyShort(MaxValue_reg)) begin
+                        {PageHitT, PageMissT, PageEmptyT} <=  4'b1000;
+                    end else if(WriteOpenPagePolicyLong(MaxValue_reg)) begin
+                        {PageHitT, PageMissT, PageEmptyT} <= 4'b1100;
+                    end else if(OpenRowList[{WriteRequestQueue[MaxValue_reg].mem_addr.bankgroup, 
+                            WriteRequestQueue[MaxValue_reg].mem_addr.bank}].valid) begin
+                        checkAutoPrecharge <= 1;
+                    end else begin
+                    {PageHitT, PageMissT, PageEmptyT} <= 4'b0001;
+                    end
+                end else if(NextPageHitS_reg) begin
+                    SchedValid_3 <= SchedValid_2;
+                    WritePopPtr <= PageHitIndexS_reg;
+                    {PageHitT, PageMissT, PageEmptyT} <= 4'b1000;
+                end else if(NextPageHitL_reg) begin
+                    SchedValid_3 <= SchedValid_2;
+                    WritePopPtr <= PageHitIndexL_reg;
+                    {PageHitT, PageMissT, PageEmptyT} <= 4'b1100;
+                end else begin
+                    SchedValid_3 <= SchedValid_2;
+                    WritePopPtr <= MaxValue_reg;
+                    if(OpenRowList[{WriteRequestQueue[MaxValue_reg].mem_addr.bankgroup, 
+                        WriteRequestQueue[MaxValue_reg].mem_addr.bank}].valid) begin
+                        {PageHitT, PageMissT, PageEmptyT} <=  4'b0010;
+                    end else begin
+                        {PageHitT, PageMissT, PageEmptyT} <=  4'b0001;
+                    end
+                end
+            end
+        end
+    end : SchedulingStage2
+
+
+//  ----------------------------------------------------------------------------------- //
     
 endmodule

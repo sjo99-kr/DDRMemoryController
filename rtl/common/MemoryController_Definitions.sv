@@ -6,10 +6,10 @@ package MemoryController_Definitions;
     //                  MEMORY CONTROLLER BASE PARAMETERS                    //
     parameter int MEM_ADDRWIDTH = 32;                                        
     parameter int MEM_DATAWIDTH = 64;                                        
-    parameter int MEM_IDWIDTH = 4;                                           
+    parameter int MEM_IDWIDTH   = 4;                                           
     parameter int MEM_USERWIDTH = 1;                                         
     parameter int COMMAND_WIDTH = 18;                      
-    parameter int BURST_LENGTH = 8;
+    parameter int BURST_LENGTH  = 8;
                      
     ///////////////////////////////////////////////////////////////////////////
 
@@ -25,37 +25,36 @@ package MemoryController_Definitions;
 
 
     //                             MEMORY CONTROLLER HARDWARE SPECIFICATION                                //
-    parameter int DEVICEPERRANK = 4;
-    parameter int NUM_FSM = 1 << (RKWIDTH + CHWIDTH);           // Number of RankFSM in Memory Controller
-    parameter int NUM_FSM_BIT = $clog2(NUM_FSM);                // Width of num. of RankFSM
+    parameter int DEVICEPERRANK = 8;
 
 
-    parameter int READCMDQUEUEDEPTH = 8;                        // Read Request Queue Depth for Rank Scheduler 
-    parameter int WRITECMDQUEUEDEPTH = 8;                       // Write Request Queue Depth for Rank Scheduler
-    parameter int READBUFFERDEPTH = 128;                        // Read Data Buffer Depth (128-entry, each entry is 64-B)
-    parameter int WRITEBUFFERDEPTH = 128;                       // Write Data Buffer Depth (128-entry, each entry is 64-B)
-    parameter int OPENPAGELISTDEPTH = 1 << (BKWIDTH+BGWIDTH);   // Open Row List Depth for Rank Scheduler
-    parameter int ASSEMBLER_DEPTH = 8;
 
+    parameter int READCMDQUEUEDEPTH  = 8;                         // Read Request Queue Depth for Rank Scheduler 
+    parameter int WRITECMDQUEUEDEPTH = 8;                         // Write Request Queue Depth for Rank Scheduler
+    parameter int READBUFFERDEPTH    = 128;                       // Read Data Buffer Depth (128-entry, each entry is 64-B)
+    parameter int WRITEBUFFERDEPTH   = 128;                       // Write Data Buffer Depth (128-entry, each entry is 64-B)
+    parameter int OPENPAGELISTDEPTH  = 1 << (BKWIDTH+BGWIDTH);    // Open Row List Depth for Rank Scheduler
+    parameter int ASSEMBLER_DEPTH    = 8;                         // Depth of write assembler queue
 
-    parameter int NUMCHANNEL    = 2;                            // Number of Memory channels in Memory Controller
-    parameter int NUMRANK       = 4;                            // Number of Rank per Memory Channel in Memory Controller
-    parameter int NUMBANKGROUP  = 4;                            // Number of BankGroup per Rank in Memory Controller
-    parameter int NUMBANK       = 4;                            // Number of Bank per BankGroup in Memory Controller
+    parameter int NUMCHANNEL    = 2;                              // Number of Memory channels in Memory Controller
+    parameter int NUMRANK       = 4;                              // Number of Rank per Memory Channel in Memory Controller
+    parameter int NUMBANKGROUP  = 4;                              // Number of BankGroup per Rank in Memory Controller
+    parameter int NUMBANK       = 4;                              // Number of Bank per BankGroup in Memory Controller
 
+    parameter int NUM_BANKFSM                    = NUMBANKGROUP * NUMBANK;
+    parameter int NUM_BANKFSM_BIT                = $clog2(NUM_BANKFSM);
+    parameter int NUM_RANKEXECUTION_UNIT         = 1 << (RKWIDTH + CHWIDTH);       
+    parameter int NUM_RANKEXECUTION_UNIT_BIT     = $clog2(NUM_RANKEXECUTION_UNIT);                
 
-    parameter int NUM_BANKFSM = NUMBANKGROUP * NUMBANK;
-    parameter int NUM_BANKFSM_BIT = $clog2(NUM_BANKFSM);
-
-    parameter int PHYFIFOMAXENTRY = 4;
-    parameter int PHYFIFODEPTH = PHYFIFOMAXENTRY * BURST_LENGTH;             // PHYFIFO FOR READ DATA PACKED
-    parameter int PHYFIFOREQUESTWINDOW = 8;
+    parameter int PHYFIFOMAXENTRY       = 4;                                // PHY FIFO Max number for Burst-data
+    parameter int PHYFIFODEPTH          = PHYFIFOMAXENTRY * BURST_LENGTH;   // PHYFIFO FOR READ DATA PACKED
+    parameter int PHYFIFOREQUESTWINDOW  = 8;                                // READ/WRITE REQUEST WINDOW FOR PHY Controller
+    
 
     //                           MEMORY CONTROLLER SCHEDULING/MANAGEMENT SPECIFICATION                        //
-
-    parameter int THRESHOLD = 512;                              // Threshold for aging counting  | blocking the request starvation
-    parameter int AGINGWIDTH = 10;                              // Width of aging couting in Request Queue
-    parameter int CHMODETHRESHOLD = 16;
+    parameter int THRESHOLD         = 512;                              // Threshold for aging counting  | blocking the request starvation
+    parameter int AGINGWIDTH        = 10;                              // Width of aging couting in Request Queue
+    parameter int CHMODETHRESHOLD   = 16;
     parameter int RESPSCHEDULINGCNT = 4;
 
 
@@ -84,7 +83,6 @@ package MemoryController_Definitions;
         logic issued;
         logic valid;
     } WriteBufferDirEntry;                        // WRITE BUFFER DIRECTORY ENTRY
-
     
     typedef struct packed {
         mem_addr_t mem_addr;
@@ -105,33 +103,31 @@ package MemoryController_Definitions;
 
 
 
-    //                               DDR-BASED MEMORY TIMING CONSTRATINS (Based on Ramulator)                           //
-    parameter int tBL = 4;                                  // BurstLength in DDR4 Timing                                                           (DQ Bus)
+    //                               DDR-BASED MEMORY TIMING CONSTRAINTS (Based on Ramulator)                           //
+    parameter int tBL   = 4;                                  // BurstLength in DDR4 Timing                                                           (DQ Bus)
     parameter int tCCDS = 4;                                // Column-to-Column for same bankgroup in DDR4 Timing                                   (DQ, CMD Bus) 
     parameter int tCCDL = 6;                                // Column-to-Column for different bankgroup in DDR4 Timing                              (DQ, CMD Bus)
     parameter int tRTRS = 2;                                // Rank-to-Rank Transition in DDR4 Timing                                               (CMD bus)
-    parameter int tCL = 16;                                 // Latency for read data between Issuing Read CMD and Receiving Read DATA               (DQ Bus)
-    parameter int tRCD = 16;                                // Latency for Activation Row                                                           (DRAM Constraints)
-    parameter int tRP = 16;                                 // Latency for Recharge                                                                 (DRAM Constraints)
-    parameter int tCWL = 12;                                // Latency for write data between Issuing Write CMD and reflecting DATA                 (DRAM Constraints)
-    parameter int tRTW = 8;                                 // Latency for Channel Mode in Memory Channel state (Read-to-Write)                     (CMD Bus)
-    parameter int tRAS = 39;                                // It can be a issue for Closed-page policy (Read-to-Precharge)                         (CMD Bus)
-    parameter int tRC = 55;                                 // tRAS + tRP                                                                           (CMD Bus)
-    parameter int tRTP = 9;                                 // Latency betweeen Read to Precharge                                                   (CMD Bus)
+    parameter int tCL   = 16;                                 // Latency for read data between Issuing Read CMD and Receiving Read DATA               (DQ Bus)
+    parameter int tRCD  = 16;                                // Latency for Activation Row                                                           (DRAM Constraints)
+    parameter int tRP   = 16;                                 // Latency for Recharge                                                                 (DRAM Constraints)
+    parameter int tCWL  = 12;                                // Latency for write data between Issuing Write CMD and reflecting DATA                 (DRAM Constraints)
+    parameter int tRTW  = 8;                                 // Latency for Channel Mode in Memory Channel state (Read-to-Write)                     (CMD Bus)
+    parameter int tRAS  = 39;                                // It can be a issue for Closed-page policy (Read-to-Precharge)                         (CMD Bus)
+    parameter int tRC   = 55;                                 // tRAS + tRP                                                                           (CMD Bus)
+    parameter int tRTP  = 9;                                 // Latency betweeen Read to Precharge                                                   (CMD Bus)
     parameter int tWTRS = 3;                                // Latency for Channel Mode in Memory Channel state (Write-to-Read) for same rank       (CMD Bus)
     parameter int tWTRL = 9;                                // Latency for Channel Mode in Memory Channel state (Write-to-Read) for diff rank       (CMD Bus)
-    parameter int tWR = 18;                                 // It can be a issue for Closed-page policy (Write-to-Precharge)                        (CMD Bus)
-    parameter int tRFC = 256;                               // Refresh latency in Memory Controller                                                 (CMD Bus)
+    parameter int tWR   = 18;                                 // It can be a issue for Closed-page policy (Write-to-Precharge)                        (CMD Bus)
+    parameter int tRFC  = 256;                               // Refresh latency in Memory Controller                                                 (CMD Bus)
     parameter int tREFI = 8192;                             // Refresh cycle in Memory Controller
-
-
 
 
    
     //                                AXI PROCOTOL BASE PARAMETERS                           //
     parameter int AXI_DATAWIDTH = 64;
     parameter int AXI_ADDRWIDTH = 32;
-    parameter int AXI_IDWIDTH = 4;
+    parameter int AXI_IDWIDTH   = 4;
     parameter int AXI_USERWIDTH = 1;
 
     //                                 AXI BUS STRUCT SPECIFICATION                           //
@@ -170,7 +166,7 @@ package MemoryController_Definitions;
 
     typedef struct packed {
         mem_addr_t mem_addr;
-        logic [NUM_FSM-1:0] fsm;
+        logic [NUM_RANKEXECUTION_UNIT-1:0] fsm;
         axi_aw_chan_t aw;
     } WrAddrEntry;                                  // MEMORY CONTROLLER WRITE-REQUEST ASSEMBLER ENTRY
 
@@ -213,7 +209,7 @@ package MemoryController_Definitions;
         logic [MEM_DATAWIDTH/8 - 1:0] write_strb;
         logic last;
 
-        logic [NUM_FSM-1:0] req_valid;
+        logic [NUM_RANKEXECUTION_UNIT-1:0] req_valid;
         logic req_data_valid;
         logic write; // write : 1 , read: 0
 
@@ -232,14 +228,11 @@ package MemoryController_Definitions;
         logic [MEM_USERWIDTH - 1 :0] mem_ack_user;
         logic b_valid;
 
-        logic [NUM_FSM-1:0] ar_ready;
-        logic [NUM_FSM-1:0] w_ready; 
-        logic [NUM_FSM-1:0] aw_ready;
+        logic [NUM_RANKEXECUTION_UNIT-1:0] ar_ready;
+        logic [NUM_RANKEXECUTION_UNIT-1:0] w_ready; 
+        logic [NUM_RANKEXECUTION_UNIT-1:0] aw_ready;
     } mc_side_response;
     //////////////////////////////////////////////////////////////
-
-
-
 
 
 endpackage

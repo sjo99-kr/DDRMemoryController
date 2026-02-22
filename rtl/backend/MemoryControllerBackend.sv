@@ -9,7 +9,7 @@
 //              - Channel scheduling (CMD/DQ)
 //              - Read/Write buffering
 //              - DDR timing enforcement
-//              - PHY interfacing
+//              - PHY interfacing (Abstract DDR interface)
 //
 //      Architectural Overview:
 //
@@ -32,7 +32,7 @@
 //  DDR IF CMD BUS   DDR4 IF DQ BUS
 //
 //      Responsibilities:
-//          1) Decide READ / WRITE channel mode based on Number of Write Request.
+//          1) Decide READ / WRITE channel mode based on Num. of Read/Write Request and status of Channel Controller & PHY controller 
 //          2) Schedule DRAM commands through ChannelController.
 //          3) Manage Read/Write Buffers and their interaction with PHY.
 //          4) Enforce DDR timing constraints (tRP, tWR, tRTR, tWTR, etc.).
@@ -49,55 +49,55 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 
 module MemoryControllerBackend #( 
-    parameter int DEVICE_CHANNEL = 0,
+    parameter int DEVICE_CHANNEL        = 0,
 
-    parameter int NUM_BANKFSM_BIT = 0,
-    parameter int NUM_BANKFSM     = 0,
+    parameter int NUM_BANKFSM_BIT       = 0,
+    parameter int NUM_BANKFSM           = 0,
 
-    parameter int MEM_DATAWIDTH = 64,
-    parameter int MEM_IDWIDTH   = 4,
-    parameter int MEM_ADDRWIDTH = 32,
-    parameter int MEM_USERWIDTH = 1,
-    parameter int CHMODETHRESHOLD = 16,
-    parameter int NUMRANK = 4,
-    parameter int NUMBANK = 4,
-    parameter int NUMBANKGROUP = 4,
-    parameter int BGWIDTH = 2,
-    parameter int BKWIDTH = 2,
-    parameter int RWIDTH  = 15,
-    parameter int CWIDTH  = 10,
-    parameter int BURST_LENGTH = 8,
-    parameter int PHYFIFODEPTH = 32,
-    parameter int READBUFFERDEPTH  = 128,
-    parameter int WRITEBUFFERDEPTH = 128,
-    parameter int READCMDQUEUEDEPTH = 8,
-    parameter int WRITECMDQUEUEDEPTH = 8,
-    parameter int OPENPAGELISTDEPTH = 16,
-    parameter int PHYFIFOREQUESTWINDOW = 8,
-    parameter int PHYFIFOMAXENTRY = 4,
-    parameter int AGINGWIDTH = 10,
-    parameter int THRESHOLD = 512,
-    parameter int COMMAND_WIDTH = 18,
-    parameter int tRP   = 16,
-    parameter int tWR   = 18,
-    parameter int tRFC  = 256,
-    parameter int tRTRS = 2,
-    parameter int tCCDL = 6,
-    parameter int tCCDS = 4,
-    parameter int tRTW  = 8,
-    parameter int tWTRS = 3,
-    parameter int tWTRL = 9,
-    parameter int tREFI = 8192,
-    parameter int tCL = 16,
-    parameter int tCWL = 12,
-    parameter int tRCD = 16,
+    parameter int MEM_DATAWIDTH         = 64,
+    parameter int MEM_IDWIDTH           = 4,
+    parameter int MEM_ADDRWIDTH         = 32,
+    parameter int MEM_USERWIDTH         = 1,
+    parameter int CHMODETHRESHOLD       = 16,
+    parameter int NUMRANK               = 4,
+    parameter int NUMBANK               = 4,
+    parameter int NUMBANKGROUP          = 4,
+    parameter int BGWIDTH               = 2,
+    parameter int BKWIDTH               = 2,
+    parameter int RWIDTH                = 15,
+    parameter int CWIDTH                = 10,
+    parameter int BURST_LENGTH          = 8,
+    parameter int PHYFIFODEPTH          = 32,
+    parameter int READBUFFERDEPTH       = 128,
+    parameter int WRITEBUFFERDEPTH      = 128,
+    parameter int READCMDQUEUEDEPTH     = 8,
+    parameter int WRITECMDQUEUEDEPTH    = 8,
+    parameter int OPENPAGELISTDEPTH     = 16,
+    parameter int PHYFIFOREQUESTWINDOW  = 8,
+    parameter int PHYFIFOMAXENTRY       = 4,
+    parameter int AGINGWIDTH            = 10,
+    parameter int THRESHOLD             = 512,
+    parameter int COMMAND_WIDTH         = 18,
+    parameter int tRP                   = 16,
+    parameter int tWR                   = 18,
+    parameter int tRFC                  = 256,
+    parameter int tRTRS                 = 2,
+    parameter int tCCDL                 = 6,
+    parameter int tCCDS                 = 4,
+    parameter int tRTW                  = 8,
+    parameter int tWTRS                 = 3,
+    parameter int tWTRL                 = 9,
+    parameter int tREFI                 = 8192,
+    parameter int tCL                   = 16,
+    parameter int tCWL                  = 12,
+    parameter int tRCD                  = 16,
 
-    parameter type FSMRequest = logic,    
-    parameter type MemoryAddress = logic,
-    parameter type ReadBufferDataEntry = logic,
-    parameter type ReadBufferDirEntry = logic,
+    parameter type FSMRequest           = logic,    
+    parameter type MemoryAddress        = logic,
+    parameter type ReadBufferDataEntry  = logic,
+    parameter type ReadBufferDirEntry   = logic,
     parameter type WriteBufferDataEntry = logic,
-    parameter type WriteBufferDirEntry = logic
+    parameter type WriteBufferDirEntry  = logic
 )(
     input logic clk, rst, clk2x,
                                                                     ///////////////////////////////////////////////////////////////////
@@ -136,7 +136,7 @@ module MemoryControllerBackend #(
                                                                     ///////////////////////////////////////////////////////////////////
                                                                     ///////////////////////////////////////////////////////////////////
                                                                     //              OUTPUT TO Memory Controller Main Module          //
-    output logic [$clog2(READBUFFERDEPTH)-1:0] NumOfReadBufferEntry,        //  1. Read Buffer Data Available  (for Response arbitration)    //
+    output logic [$clog2(READBUFFERDEPTH)-1:0] NumOfReadBufferEntry,//  1. Read Buffer Data Available  (for Response arbitration)    //
                                                                     ///////////////////////////////////////////////////////////////////
                                                                                                
                                                                     ///////////////////////////////////////////////////////////////////
@@ -165,6 +165,7 @@ module MemoryControllerBackend #(
     //      WriteBuffer <-> PHYController
     //          - Write data issue path
     //------------------------------------------------------------------------------
+
     //            Channel Controller <--->  PHY Controller                //
     logic PHYReadModePreACK, PHYWriteModePreACK;                //  PHY Controller     -> Channel Controller
     MemoryAddress PHYReadModePreAddr, PHYWriteModePreAddr;      //  PHY Controller     -> Channel Controller
@@ -214,6 +215,7 @@ module MemoryControllerBackend #(
     logic [$clog2(WRITECMDQUEUEDEPTH * NUMRANK):0] NumWrReq;
     logic channelIdle;
     wire issuable;
+
     //------------------------------------------------------------------------------
     //  Channel Read/Write Mode Controller
     //
@@ -221,10 +223,13 @@ module MemoryControllerBackend #(
     //  - Policy: Threshold-based static mode switching.
     //      * Prefer READ when read buffer has entries.
     //      * Switch to WRITE when write buffer pressure exceeds threshold.
-    //  - Mode transitions are synchronized with PHY readiness.
+    //  - "Mode transitions" is synchronized with PHY readiness.
+    //  - "ChannelRDWRTransReady" is for ready signal from Rank Schedulers  
+    //  - "ChannelIdle" is for ready signal from BankFSMs
+    //  - "Issuable" is for blocking on-fly-request processing in RankScheduler.
     //
     //  NOTE:
-    //      - This is a channel-wide policy (not per-rank).
+    //      - This is a channel-level policy (not per-rank).
     //      - More dynamic schemes (e.g., aging-based) are future work.
     //------------------------------------------------------------------------------
     always_ff@(posedge clk or negedge rst) begin
@@ -286,15 +291,6 @@ module MemoryControllerBackend #(
             end
         end
     end
-
-
-
-
-
-
-
-
-
 
     //------------------------------------------------------------------------------
     //      ChannelController

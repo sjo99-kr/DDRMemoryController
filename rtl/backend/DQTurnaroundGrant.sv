@@ -23,7 +23,7 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 
 module DQTurnaroundGrant #(
-    parameter int tRTW = 8,
+    parameter int tRTW  = 8,
     parameter int tWTRS = 3,
     parameter int tWTRL = 9
 )(
@@ -53,7 +53,7 @@ module DQTurnaroundGrant #(
     end
 
     assign diff_sig = (trackMode_prev != channelMode);
-    assign flag = (diff_sig || (cnt != 0)) ? 1 : 0;
+    assign flag     = (diff_sig || (cnt != 0)) ? 1 : 0;
 
     always_ff@(posedge clk or negedge rst) begin
         if(!rst) begin

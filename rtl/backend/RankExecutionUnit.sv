@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 
 //------------------------------------------------------------------------------
-//      RankFSM
+//      RankExecutionUnit
 //
 //      Role:
-//          Rank-level DDR command state machine.
+//          Rank-level FSM for controlling BankFSMs and arbitration CMD/ADDR signals.
 //
 //      Responsibilities:
 //          - Executes ACT / PRE / RD / WR / REF commands for a single rank.
@@ -13,40 +13,39 @@
 //          - Issues buffer requests and handles auto-precharge semantics.
 //
 //      Scope & Notes:
-//          - Timing-accurate at command level (tRCD, tRP, tRFC, tWR).
-//          - No request reordering; serves one scheduled request at a time.
-//          - Electrical behavior is abstracted (command-level only).
+//          - Timing-accurate at command level (tRCD, tRP, tRFC).
+//          - No request reordering; serves one scheduled request at a time. (Out-of-order request ordering is executed in "RankSched")
 //
 //      Author  : Seongwon Jo
 //      Created : 2026.02
 //------------------------------------------------------------------------------
 
 
-module RankFSM #(
-    parameter int FSM_CHANNEL = 0,
-    parameter int FSM_RANK = 0,
+module RankExecutionUnit #(
+    parameter int FSM_CHANNEL       = 0,
+    parameter int FSM_RANK          = 0,
 
     
-    parameter int NUM_BANKFSM = 16,
-    parameter int NUM_BANKFSM_BIT = 4,
+    parameter int NUM_BANKFSM       = 16,
+    parameter int NUM_BANKFSM_BIT   = 4,
 
-    parameter int MEM_IDWIDTH = 4,
-    parameter int MEM_USERWIDTH = 1,
-    parameter int BKWIDTH = 2,
-    parameter int BGWIDTH = 2,
-    parameter int RWIDTH = 15,
-    parameter int CWIDTH = 10,
-    parameter int NUMBANK = 4,
-    parameter int NUMBANKGROUP = 4,
-    parameter int COMMAND_WIDTH = 18,
+    parameter int MEM_IDWIDTH       = 4,
+    parameter int MEM_USERWIDTH     = 1,
+    parameter int BKWIDTH           = 2,
+    parameter int BGWIDTH           = 2,
+    parameter int RWIDTH            = 15,
+    parameter int CWIDTH            = 10,
+    parameter int NUMBANK           = 4,
+    parameter int NUMBANKGROUP      = 4,
+    parameter int COMMAND_WIDTH     = 18,
 
-    parameter int tRP = 16,
-    parameter int tWR = 18,
-    parameter int tRFC = 256,
-    parameter int tRCD = 16,
+    parameter int tRP               = 16,
+    parameter int tWR               = 18,
+    parameter int tRFC              = 256,
+    parameter int tRCD              = 16,
 
-    parameter type FSMRequest = logic,
-    parameter type MemoryAddress = logic
+    parameter type FSMRequest       = logic,
+    parameter type MemoryAddress    = logic
 )(
     // Common
     input logic clk, 
@@ -76,10 +75,10 @@ module RankFSM #(
                                                           //   Output to RankSched    //
     output logic schedRefACK,
     output logic [NUM_BANKFSM-1:0] schedIdle,
-    output logic [NUM_BANKFSM-1:0] fsmWait,           // Valid when the FSM is waiting for loadTimer
+    output logic [NUM_BANKFSM-1:0] fsmWait,               // Valid when the FSM is waiting for loadTimer
 
     ////////////////////////////////////////////////////////////////////////////////////////
-    // Why the FSM need to consider the timing constraints for DQ bus???                  //
+    //      Why the FSM need to consider the timing constraints for DQ bus???             //
     // - Unlike ACT, PRE, REFRESH, the read and write command have to aware               //
     // of timing for read data and write data.                                            //
     ////////////////////////////////////////////////////////////////////////////////////////
@@ -178,24 +177,24 @@ module RankFSM #(
         bufReqACKAddr      = '0;
         CCDShort           = '0;
         chSchedCMDACK      = '0;
-        chSchedRdWrACK = '0;
+        chSchedRdWrACK     = '0;
         schedRefACK = &schedRefACKBank;
         
         for(int i = 0; i < NUM_BANKFSM; i++) begin
             if(targetBanks[i])begin
-                bufReadReqIssued = bufReadReqIssuedBank[i];
-                bufReadReqId = bufReadReqIdBank[i];
-                bufReadReqUser = bufReadReqUserBank[i];
+                bufReadReqIssued  = bufReadReqIssuedBank[i];
+                bufReadReqId      = bufReadReqIdBank[i];
+                bufReadReqUser    = bufReadReqUserBank[i];
 
                 bufWriteReqIssued = bufWriteReqIssuedBank[i];
-                bufWriteReqId =  bufWriteReqIdBank[i];
-                bufWriteReqUser = bufWriteReqUserBank[i];
+                bufWriteReqId     =  bufWriteReqIdBank[i];
+                bufWriteReqUser   = bufWriteReqUserBank[i];
 
-                bufReqACKAddr   = bufReqACKAddrBank[i];
-                CCDShort = ccdType[i];
+                bufReqACKAddr     = bufReqACKAddrBank[i];
+                CCDShort          = ccdType[i];
 
-                chSchedCMDACK  = chSchedCMDACKBank[i];
-                chSchedRdWrACK = chSchedRdWrACKBank[i];
+                chSchedCMDACK     = chSchedCMDACKBank[i];
+                chSchedRdWrACK    = chSchedRdWrACKBank[i];
             end
         end
     end
@@ -237,11 +236,11 @@ module RankFSM #(
     logic [BKWIDTH+BGWIDTH-1:0] bankIndex [NUM_BANKFSM-1 : 0];
 
     always_comb begin
-        apSetup = 0;
+        apSetup     = 0;
         BGBKfromFSM = '0;
         for(int a = 0; a < NUM_BANKFSM; a++) begin
             if(targetBanks[a]) begin
-                apSetup = apSetup_bank[a];
+                apSetup     = apSetup_bank[a];
                 BGBKfromFSM = bankIndex[a];
             end
         end
@@ -300,7 +299,7 @@ module RankFSM #(
 
 
     //------------------------------------------------------------------------------
-    //  RankFSM State Register
+    //  RankExecutionUnit State Register
     //
     //  - Holds current / previous FSM states.
     //  - Preserves previous state during LoadTimer for timing serialization.
@@ -331,7 +330,7 @@ module RankFSM #(
     
 
     //------------------------------------------------------------------------------
-    //  RankFSM Control Logic
+    //  RankExecutionUnit Control Logic
     //
     //  - Determines next FSM state based on:
     //      * Page hit / miss conditions
@@ -374,23 +373,29 @@ module RankFSM #(
                         schedIdle[i] = 1;
                         casez ({schedValid[i], refresh, schedReq.PageMiss, schedReq.PageEmpty})    // 4-bit standard for deciding next state.
                             4'b?1??: begin
-                                next[i] = Refresh;                                                 // Next STATE: REFRESH 
+                                next[i]      = Refresh;                                                 // Next STATE: REFRESH 
                                 schedIdle[i] = 0;
-                                $display("[CH-%d RK-%d FSM] CLK: %d | REFRESH State", FSM_CHANNEL, FSM_RANK, $time);
+                                `ifdef DISPLAY
+                                    $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | REFRESH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                `endif
                             end
                             4'b00??: begin                                                      // NO STATE CHANGE WITHOUT VALID.
                                 next[i] = Idle;        
                             end
                             4'b1010: begin                                                      // Page Miss Case with Valid
-                                next[i] = Precharge;                                               // We have to CLOSE the ROW first thing.
+                                next[i]      = Precharge;                                               // We have to CLOSE the ROW first thing.
                                 schedIdle[i] = 0;
-                                $display("[CH-%d RK-%d BK-%d FSM] CLK: %d | PRECHARGE State", FSM_CHANNEL, FSM_RANK, i, $time);
+                                `ifdef DISPLAY
+                                    $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | PRECHARGE ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                `endif
                             end
                             4'b1001: begin                                                      // Page Empty (No need for precharge)
-                                next[i] = Activate;                                             // We don't need to CLOSE the ROW.
+                                next[i]      = Activate;                                             // We don't need to CLOSE the ROW.
                                                                                                 // THERE IS NO OPEN ROW in the REQ. ADDR.
                                 schedIdle[i] = 0;
-                                $display("[CH-%d RK-%D FSM] CLK: %d | ACTIVATIVE State", FSM_CHANNEL, FSM_RANK, $time);
+                                `ifdef DISPLAY
+                                    $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | ACTIVATE ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                `endif
                             end
                             4'b1000: begin                                                      // Page Hit
                                                                                                 // RTW , WTR consideration
@@ -410,9 +415,9 @@ module RankFSM #(
                     Activate: begin                                                              // State for loading specific row data to sense amplifiers (Row buffer)
                         if(chCMDAvailable && !bankState[bankIndex[i]] &&                       // For Activation Phase, we need to granted for memory channel.
                         targetBanks[i]) begin                        
-                            next[i] = LoadTimer;                                                    // Activation can only be executed when there is no conflict with AP,
-                            TimingSet[i] = 1;                                                       // and grant from channel scheduler.
-                            TimingLoad[i] = tRCD-1;                                                 // We need to wait for ACTIVATION-related timing, tRCD.
+                            next[i]              = LoadTimer;                                                    // Activation can only be executed when there is no conflict with AP,
+                            TimingSet[i]         = 1;                                                       // and grant from channel scheduler.
+                            TimingLoad[i]        = tRCD-1;                                                 // We need to wait for ACTIVATION-related timing, tRCD.
                             chSchedCMDACKBank[i] = 1;                                                   // We send a signal to Channel Scheduler for acknowledging chched.
                         end else begin
                             next[i] = Activate;                                                     // With No grant and AP conditions, we need to WAIT.
@@ -423,7 +428,9 @@ module RankFSM #(
                         case(prev[i])
                             Activate: begin                                     // Need to wait for tRCD
                                 if(RowFree[i]) begin                               // If the timing is end,
-                                    $display("[CH-%d RK-%D FSM] CLK: %d | ACTIVATE FINISH", FSM_CHANNEL, FSM_RANK, $time);
+                                    `ifdef DISPLAY
+                                        $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | ACTIVATE FINISH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                    `endif
                                     if(servingReq[i].req_type) begin               // Then go to Column operation for the requests
                                         //write == 1
                                         next[i]    = Write; 
@@ -440,25 +447,29 @@ module RankFSM #(
 
                             Precharge: begin                                    // Need to wait for tRP.
                                 if(RowFree[i]) begin                               // If the timing is end,
-                                    next[i] = Activate;                            // then go to activation the row.
+                                    next[i]    = Activate;                            // then go to activation the row.
                                     fsmWait[i] = 0;
-                                    $display("[CH-%d RK-%D FSM] CLK: %d | PRECHARGE FINISH", FSM_CHANNEL, FSM_RANK, $time);
+                                    `ifdef DISPLAY
+                                        $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | PRECHARGE FINISH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                    `endif
                                 end else begin
-                                    next[i] = LoadTimer;                           // Before timing is end, it requires to wait.
+                                    next[i]    = LoadTimer;                           // Before timing is end, it requires to wait.
                                 end
                             end
 
                             Refresh: begin                                      // Need to wait for tRFC.
                                 if(RowFree[i]) begin                               // If the timing is end,
-                                    next[i] = Idle;                                // then go to Idle.
-                                    fsmWait[i] = 0;
-                                    $display("[CH-%d RK-%D FSM] CLK: %d | REFRESH FINISH", FSM_CHANNEL, FSM_RANK, $time);
+                                    next[i]     = Idle;                                // then go to Idle.
+                                    fsmWait[i]  = 0;
+                                    `ifdef DISPLAY
+                                        $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | REFRESH FINISH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                                    `endif
                                 end else begin
-                                    next[i] = LoadTimer;                           // Before timing is end, it requires to wait.
+                                    next[i]     = LoadTimer;                           // Before timing is end, it requires to wait.
                                 end
                             end
                             default: begin
-                                next[i] = LoadTimer;
+                                next[i]         = LoadTimer;
                             end
                         endcase
                     end
@@ -476,8 +487,8 @@ module RankFSM #(
                     Read: begin
                         if(chCMDAvailable & chCMDDQAvailable && rbuf_available && !bankState[bankIndex[i]] && rbufWindowAvailable &&
                            targetBanks[i]) begin
-                            chSchedRdWrACKBank[i] = 1;
-                            chSchedCMDACKBank[i] = 1;
+                            chSchedRdWrACKBank[i]   = 1;
+                            chSchedCMDACKBank[i]    = 1;
 
                             bufReadReqIssuedBank[i] = 1;
                             bufReadReqIdBank[i]     = servingReq[i].req_id;
@@ -493,7 +504,9 @@ module RankFSM #(
                                 apSetup_bank[i] = 1;
                             end
                             next[i] = Idle;
-                            $display("[CH-%d RK-%D FSM] CLK: %d | READ FINISH", FSM_CHANNEL, FSM_RANK, $time);
+                            `ifdef DISPLAY
+                                    $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | READ FINISH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                            `endif
                         end
                         else begin
                             next[i] = Read;
@@ -503,8 +516,8 @@ module RankFSM #(
                     Write: begin
                         if(chCMDAvailable && chCMDDQAvailable && wbuf_available && !bankState[bankIndex[i]] &&
                             targetBanks[i]) begin
-                            chSchedRdWrACKBank[i] = 1;
-                            chSchedCMDACKBank[i] = 1;
+                            chSchedRdWrACKBank[i]    = 1;
+                            chSchedCMDACKBank[i]     = 1;
                             
                             bufWriteReqIssuedBank[i] = 1;
                             bufWriteReqIdBank[i]     = servingReq[i].req_id;
@@ -512,42 +525,44 @@ module RankFSM #(
                             bufReqACKAddrBank[i]     = servingReq[i].mem_addr;
 
                             if(servingReq[i].PageHit == 2'b11)begin // PageOpen Long
-                                ccdType[i] = 0; // long                        
+                                ccdType[i]      = 0; // long                        
                             end else if (servingReq[i].PageHit == 2'b10) begin // PageOpen Short
-                                ccdType[i] = 1; // short
+                                ccdType[i]      = 1; // short
                             end 
                             if(servingReq[i].AutoPreCharge) begin
                                 apSetup_bank[i] = 1;
                             end
-                            next[i] = Idle;
-                            $display("[CH-%d RK-%D FSM] CLK: %d | WRITE FINISH", FSM_CHANNEL, FSM_RANK, $time);
+                            next[i]             = Idle;
+                            `ifdef DISPLAY
+                                    $display("[%0t] RankExecutionUnit | BankFSM (CH-%d-RK-%d-BG-%d-BK-%d) | WRITE FINISH ", $time, FSM_CHANNEL, FSM_RANK, i/4, i%4);
+                            `endif
                         end
                         else begin
-                            next[i] = Write;
+                            next[i]             = Write;
                         end
                     end
 
                     Refresh: begin // Rank-level Precharge + Refresh.
                         schedRefACKBank[i] = 1;
                         if(chCMDAvailable && !bankState[bankIndex[i]] && (&schedRefACKBank)) begin
-                            next[i] = LoadTimer;
+                            next[i]              = LoadTimer;
                             chSchedCMDACKBank[i] = 1;
-                            TimingSet[i] = 1;
-                            TimingLoad[i] = tRFC-1;
+                            TimingSet[i]         = 1;
+                            TimingLoad[i]        = tRFC-1;
                         end else begin
-                            next[i] = Refresh;
+                            next[i]              = Refresh;
                         end
                     end
 
                     Precharge: begin // single-bank Precharge
                         if(chCMDAvailable && !bankState[bankIndex[i]] &&
                             targetBanks[i]) begin
-                            next[i] = LoadTimer; // Single-bank Precharge 
+                            next[i]              = LoadTimer; // Single-bank Precharge 
                             chSchedCMDACKBank[i] = 1;
-                            TimingSet[i] = 1;
-                            TimingLoad[i] = tRP-1;
+                            TimingSet[i]         = 1;
+                            TimingLoad[i]        = tRP-1;
                         end else begin
-                            next[i] = Precharge;
+                            next[i]              = Precharge;
                         end
                     end
                     default : begin
@@ -572,27 +587,27 @@ module RankFSM #(
             always_comb begin 
                 pin_A_bank[i] = 0;
                 // Default control signals (Deselect)
-                {cke_bank[i], cs_n_bank[i], act_n_bank[i]} = 3'b111; 
-                bg_bank[i] = '0;
-                b_bank[i]  = '0;
+                {cke_bank[i], cs_n_bank[i], act_n_bank[i]}  = 3'b111; 
+                bg_bank[i]                                  = '0;
+                b_bank[i]                                   = '0;
                 unique case(state[i])
                     Idle: begin // DES
-                        {cke_bank[i], cs_n_bank[i]} = '1;
+                        {cke_bank[i], cs_n_bank[i]}         = '1;
                     end
                     Activate : begin
                         if(chCMDAvailable && !bankState[bankIndex[i]] && // In Activation, the Interface of CMD is for Row operation, especially for ACT.
                         targetBanks[i]) begin  
-                            {cs_n_bank[i], act_n_bank[i]} = '0;
-                            cke_bank[i] = 1;
-                            pin_A_bank[i] = { {(COMMAND_WIDTH-RWIDTH){1'b0}}, servingReq[i].mem_addr.row };
-                            bg_bank[i] = servingReq[i].mem_addr.bankgroup;
-                            b_bank[i]  = servingReq[i].mem_addr.bank;
+                            {cs_n_bank[i], act_n_bank[i]}   = '0;
+                            cke_bank[i]                     = 1;
+                            pin_A_bank[i]                   = { {(COMMAND_WIDTH-RWIDTH){1'b0}}, servingReq[i].mem_addr.row };
+                            bg_bank[i]                      = servingReq[i].mem_addr.bankgroup;
+                            b_bank[i]                       = servingReq[i].mem_addr.bank;
                         end else begin
-                            {cke_bank[i], cs_n_bank[i]} = '1;
+                            {cke_bank[i], cs_n_bank[i]}     = '1;
                         end
                     end
                     LoadTimer: begin                        // In LoadTimer, the Interface of CMD is De-selected.
-                        {cke_bank[i], cs_n_bank[i]} = '1;
+                        {cke_bank[i], cs_n_bank[i]}         = '1;
                     end
 
                     Read: begin                             // In Read, the Interface of CMD is for Column operation, especially for READ.
@@ -602,17 +617,17 @@ module RankFSM #(
                                 pin_A_bank[i] = {{(COMMAND_WIDTH-CWIDTH){1'b0}}, servingReq[i].mem_addr.col};
                                 {cke_bank[i], act_n_bank[i], pin_A_bank[i][16], pin_A_bank[i][14], pin_A_bank[i][10]} = '1;
                                 {cs_n_bank[i], pin_A_bank[i][15]} = '0;
-                                bg_bank[i] = servingReq[i].mem_addr.bankgroup;
-                                b_bank[i] = servingReq[i].mem_addr.bank;
+                                bg_bank[i]                        = servingReq[i].mem_addr.bankgroup;
+                                b_bank[i]                         = servingReq[i].mem_addr.bank;
                             end else begin
                                 pin_A_bank[i] = {{(COMMAND_WIDTH-CWIDTH){1'b0}}, servingReq[i].mem_addr.col};
                                 {cke_bank[i], act_n_bank[i], pin_A_bank[i][16], pin_A_bank[i][14]} = '1;
                                 {cs_n_bank[i], pin_A_bank[i][15], pin_A_bank[i][10]} = '0;
-                                bg_bank[i] = servingReq[i].mem_addr.bankgroup;
-                                b_bank[i] = servingReq[i].mem_addr.bank;
+                                bg_bank[i]                                           = servingReq[i].mem_addr.bankgroup;
+                                b_bank[i]                                            = servingReq[i].mem_addr.bank;
                             end
                         end else begin
-                            {cke_bank[i], cs_n_bank[i]} = '1;
+                            {cke_bank[i], cs_n_bank[i]}                              = '1;
                         end
                     end
                     Write: begin                            // In Write, the Interface of CMD is for Column operation, especially for Write.
@@ -622,13 +637,13 @@ module RankFSM #(
                                 pin_A_bank[i] = {{(COMMAND_WIDTH-CWIDTH){1'b0}}, servingReq[i].mem_addr.col};
                                 
                                 {cke_bank[i], act_n_bank[i], pin_A_bank[i][16], pin_A_bank[i][10]} = '1;
-                                {cs_n_bank[i], pin_A_bank[i][15], pin_A_bank[i][14]} = '0;
+                                {cs_n_bank[i], pin_A_bank[i][15], pin_A_bank[i][14]}               = '0;
                             
-                                bg_bank[i] = servingReq[i].mem_addr.bankgroup;
-                                b_bank[i]  = servingReq[i].mem_addr.bank;
+                                bg_bank[i]  = servingReq[i].mem_addr.bankgroup;
+                                b_bank[i]   = servingReq[i].mem_addr.bank;
                             end else begin
                                 pin_A_bank[i] = {{(COMMAND_WIDTH-CWIDTH){1'b0}}, servingReq[i].mem_addr.col};
-                                {cke_bank[i], act_n_bank[i], pin_A_bank[i][16]} = '1;
+                                {cke_bank[i], act_n_bank[i], pin_A_bank[i][16]}                         = '1;
                                 {cs_n_bank[i], pin_A_bank[i][15], pin_A_bank[i][14], pin_A_bank[i][10]} = '0;
                                 bg_bank[i] = servingReq[i].mem_addr.bankgroup;
                                 b_bank[i]  = servingReq[i].mem_addr.bank;

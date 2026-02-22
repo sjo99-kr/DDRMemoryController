@@ -4,7 +4,7 @@
 //      DQRdWrGrantArbiter
 //
 //      Role:
-//          Enforces CAS-to-CAS (tCCD) timing constraints on the DQ bus.
+//          Enforces CAS-to-CAS (tCCD) timing constraints on the DQ bus. (Read -> Read / Write -> Write / Read -> Write / Write -> Read cases)
 //
 //      Functionality:
 //          - Starts a timing window upon RD/WR CAS acknowledgment (chRdWrACK).
@@ -43,25 +43,25 @@ module DQRdWrCCDGrant #(
     //------------ CAS-to-CAS (Short/Long) Timing Scheduling --------------//
     always_ff@(posedge clk or negedge rst) begin
         if(!rst) begin
-            cnt_flag <= 0;
+            cnt_flag    <= 0;
             DQAvailable <= 1;
-            count <= 0;
+            count       <= 0;
         end else begin
             if(chRdWrACK) begin
-                cnt_flag <= 1;
+                cnt_flag    <= 1;
                 DQAvailable <= 0;
                                                 //  Subtract 2 cycles:
-                if(CCDType) count <= tCCDS-2;   //  - 1 cycle for the issuing CAS itself
-                else count <= tCCDL-2;          //  - 1 cycle for current cycle alignment
+                if(CCDType) count   <= tCCDS-2;   //  - 1 cycle for the issuing CAS itself
+                else count          <= tCCDL-2;          //  - 1 cycle for current cycle alignment
                 `ifdef DISPLAY
                     $display("[%0t] DQRdWrCCDGrant | CCD Timing Constraint ON", $time);
                 `endif
             end else begin 
                 if(cnt_flag ==1)begin
-                    count <= count -1;
+                    count           <= count -1;
                     if(count == 0) begin
-                        count <= 0;
-                        cnt_flag <= 0;
+                        count       <= 0;
+                        cnt_flag    <= 0;
                         DQAvailable <= 1;
                         `ifdef DISPLAY
                         $display("[%0t] DQRdWrCCDGrant | CCD Timing Constraint OFF", $time);

@@ -35,7 +35,7 @@ module DRAMTimingCounter(
     );
 
     logic [5:0] countLoad;
-    logic countEnd;
+    logic       countEnd;
     
     always_ff@(posedge clk or negedge rst) begin
         if(!rst)begin

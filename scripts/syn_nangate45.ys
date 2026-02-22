@@ -15,7 +15,7 @@ read -sv2012 ../syn/yosys_rtl/backend/DQTurnaroundGrant.sv
 read -sv2012 ../syn/yosys_rtl/backend/PHYWriteMode.sv
 read -sv2012 ../syn/yosys_rtl/backend/PHYReadMode.sv
 read -sv2012 ../syn/yosys_rtl/backend/PHYController.sv
-read -sv2012 ../syn/yosys_rtl/backend/RankFSM.sv
+read -sv2012 ../syn/yosys_rtl/backend/RankExecutionUnit.sv
 read -sv2012 ../syn/yosys_rtl/backend/RankSched.sv
 read -sv2012 ../syn/yosys_rtl/backend/RankController.sv
 read -sv2012 ../syn/yosys_rtl/backend/ReadBufferController.sv

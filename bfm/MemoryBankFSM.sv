@@ -5,28 +5,30 @@
 //
 //  ROLE:
 //      Bank-level DRAM behavioral model for DDR4.
-//      Each instance models one (BG, Bank) pair inside a rank.
+//      Each instance models one (BG, Bank) pair inside a rank (i.e., total 16 BankFSM per Rank in this modeling).
 //
 //  RESPONSIBILITIES:
-//      - Decode DDR4 command signals broadcast from Rank-level controller
+//      - Decode DDR4 command signals broadcast from Rank-level controller in Memory Controller-side
 //        (ACT, READ, WRITE, PRECHARGE, REFRESH).
 //      - Model row state transitions (Closed ↔ Opened).
 //      - Enforce DRAM timing constraints using a cycle-based timing counter
-//        (tRCD, tCL, tCWL, tRP, tRFC).
+//        (tRCD, tCL, tCWL, tRP, tRFC, etc.).
 //      - Generate burst-level read/write behavior with clk2x granularity.
 //      - Maintain simplified per-bank storage for functional correctness.
 //
-//  MODELING SCOPE (BFM):
+//  MODELING SCOPE (Bank FSM in DRAM):
 //      - Cycle-accurate control timing (FSM + counters).
 //      - Functional data correctness (burst-level read/write).
-//      - Electrical effects (DQ/DQS, analog timing, training) are abstracted.
+//      - DQS and Pin_dq (i.e., bidirectional port) are abstracted
 //
 //  NOTES:
 //      - Commands are assumed to be correctly decoded and bank-selected
 //        by higher-level Rank/Channel logic.
-//      - Storage is burst-granular, not full DRAM array-accurate.
+//      - Storage is burst-granular, not full DRAM array-accurate (i.e., only has small memory space).
 //      - Intended for verification & architectural validation.
 //
+//      Author  : Seongwon Jo
+//      Created : 2026.02
 //------------------------------------------------------------------------------
 
 module MemoryBankFSM#(
@@ -49,10 +51,10 @@ module MemoryBankFSM#(
     parameter int tRP  = 16
 )(
     input logic clk, rst_n, clk2x,
-                                                                //       DDR COMMAND BROADCAST TO EVERY BANKFSM         //
-                                                                //        INPUT  FROM  Memory RANK (For CMD/ADDR)       //
-    input logic bankCKE,                                        //  1. Bank Enable Signal, based on the BG, B address   //
-    input logic bankCS_N,                                       //  2. Chip selected Signal, based on selected Rank     //
+    
+    //       DDR COMMAND BROADCAST TO EVERY BANKFSM         //                                                     
+    input logic bankCKE,                                 
+    input logic bankCS_N,                                      
     input logic bankPAR,                                                
     input logic [COMMAND_WIDTH-1:0] bankPIN_A, 
     input logic bankACT_N,
@@ -61,19 +63,19 @@ module MemoryBankFSM#(
     input logic [MEM_DATAWIDTH/BURST_LENGTH - 1 : 0] bankLDM_N, 
     input logic bankODT,
 
-                                                                //          INOUT  TO/FROM  Memory RANK (For DQ)        //
-    input  logic [MEM_DATAWIDTH-1:0] bankWrDQ,                  //  1. Bank-side data for Read/Write                    // 
+    //          INOUT  TO/FROM  Memory RANK (For DQ)        //
+    input  logic [MEM_DATAWIDTH-1:0] bankWrDQ,                  
     output logic [MEM_DATAWIDTH-1:0] bankRdDQ,
     `ifndef VERILATOR
-    inout  wire bankDQS_t, bankDQS_c,                           //  3. Clock  for  DQS                                  //
+    inout  wire bankDQS_t, bankDQS_c,                          
     `endif 
     `ifdef VERILATOR
     input wire bankDQS_t, bankDQS_c,
     `endif
 
-                                                                //          OUTPUT  TO  Memory RANK (For READ DATA)     //
-    output logic ReadBurstValid,                                //  1. Bank-side data for Read                          //
-    output logic WriteBurstValid                                //  2. Bank-side data for Write                         //
+     //          OUTPUT  TO  Memory RANK (For READ DATA)     //
+    output logic ReadBurstValid,                                
+    output logic WriteBurstValid                                
 );
 
 
@@ -88,12 +90,6 @@ module MemoryBankFSM#(
     // NO-OPERATION   1       1       1       1        1       0        //
     //////////////////////////////////////////////////////////////////////
 
-
-    logic [MEM_DATAWIDTH-1:0] MEM [BURST_LENGTH-1:0];  //  logic [MEM_DATAWIDTH-1:0] Memory [RankMemory/(MEM_DATAWIDTH/8) - 1:0];
-    logic [$clog2(BURST_LENGTH)-1:0] burstCnt;         //  BURST COUNT FOR READ/WRITE
-    logic mode;                                        //  Read Mode : 0, Write Mode : 1
-    logic burstFlag;                                   //  Only VALID WHEN BURST READ OR BURST WRITE
-
     typedef enum logic [2:0] {
         rowClosed,
         Read,
@@ -102,14 +98,20 @@ module MemoryBankFSM#(
         rowOpened,
         Precharge,
         Refresh
-    } DRAMState_t;
+    } BANKFSMState_t;
 
-    DRAMState_t curr, next; 
+    BANKFSMState_t curr, next;
 
-    logic setup;            //  Setup Signal for DRAMCounter
-    logic [5:0] load;       //  Load Value for DRAMCounter
-    logic timeup;           //  Timeup Signal for FSM
-    logic autoPrecharge;    //  AutoPrecharge Reg for FSM
+    logic [MEM_DATAWIDTH-1:0] MEM [BURST_LENGTH-1:0];  //  logic [MEM_DATAWIDTH-1:0] Memory [RankMemory/(MEM_DATAWIDTH/8) - 1:0];
+    logic [$clog2(BURST_LENGTH)-1:0] burstCnt;         //  BURST COUNT FOR READ/WRITE
+    logic mode;                                        //  Read Mode : 0, Write Mode : 1
+    logic burstFlag;                                   //  Only VALID WHEN BURST READ OR BURST WRITE
+
+    logic setup;                                       //  Setup Signal for DRAMCounter
+    logic [5:0] load;                                  //  Load Value for DRAMCounter
+    logic timeup;                                      //  Timeup Signal for FSM
+    logic autoPrecharge;                               //  AutoPrecharge Reg for FSM
+
     //-------------------------------------------------------------------------
     //  Read / Write Mode & Burst Control
     //-------------------------------------------------------------------------
@@ -169,22 +171,19 @@ module MemoryBankFSM#(
     end : MemoryModeling
 
 
-    assign bankRdDQ = (mode == 0) ? MEM[burstCnt] : '0;
-    assign ReadBurstValid  = (mode==0) && burstFlag; 
-    assign WriteBurstValid = (mode==1) && burstFlag;
+    assign bankRdDQ         =  (mode == 0)  ? MEM[burstCnt] : '0;
+    assign ReadBurstValid   =  (mode == 0) && burstFlag; 
+    assign WriteBurstValid  =  (mode == 1) && burstFlag;
 
-
-    
     //-------------------------------------------------------------------------
     //  DRAM Timing Counter Interface
     //-------------------------------------------------------------------------
-
     DRAMTimingCounter DRAMCounter(      // Calculating the DRAM timings (e.g., tCL, tCWL, tRCD..)
         .clk(clk), .rst(rst_n),
         .setup(setup), .load(load),
         .timeUp(timeup)
     );
-
+    
     //-------------------------------------------------------------------------
     //  Bank-level DRAM FSM
     //-------------------------------------------------------------------------

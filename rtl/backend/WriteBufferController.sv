@@ -13,7 +13,7 @@
 //          - Generates write response (ACK) for frontend.
 //
 //      Scope & Notes:
-//          - Data-level buffering only (no DRAM timing logic).
+//          - Data-level buffering only (no DRAM timing logic, timing is calculated in PHY Controller).
 //          - One outstanding write entry corresponds to one burst.
 //          - PHY-side backpressure handled via FIFO-ready signaling.
 //
@@ -22,17 +22,17 @@
 //------------------------------------------------------------------------------
 
 module WriteBufferController #(
-    parameter int BUFFER_CHANNEL = 0,
-    parameter int MEM_DATAWIDTH = 64,
-    parameter int MEM_USERWIDTH = 1,
-    parameter int MEM_IDWIDTH = 4,
-    parameter int NUMRANK = 4,
-    parameter int WRITEBUFFERDEPTH = 128,
-    parameter int BURST_LENGTH = 8,
+    parameter int BUFFER_CHANNEL         = 0,
+    parameter int MEM_DATAWIDTH          = 64,
+    parameter int MEM_USERWIDTH          = 1,
+    parameter int MEM_IDWIDTH            = 4,
+    parameter int NUMRANK                = 4,
+    parameter int WRITEBUFFERDEPTH       = 128,
+    parameter int BURST_LENGTH           = 8,
     
-    parameter type WriteBufferDataEntry = logic,
-    parameter type WriteBufferDirEntry = logic,
-    parameter type MemoryAddress = logic
+    parameter type WriteBufferDataEntry  = logic,
+    parameter type WriteBufferDirEntry   = logic,
+    parameter type MemoryAddress         = logic
 
 ) (
     // common
@@ -88,7 +88,7 @@ module WriteBufferController #(
 
                                                                         /////////////////////////////////////////////////
                                                                         //       Output to Top Scheduler               //
-    output logic [$clog2(WRITEBUFFERDEPTH)- 1:0] WriteRequestWindow   // 1. Write Buffer Entry Count for Ch. MODE    //
+    output logic [$clog2(WRITEBUFFERDEPTH)- 1:0] WriteRequestWindow     // 1. Write Buffer Entry Count for Ch. MODE    //
                                                                         /////////////////////////////////////////////////
 );
 
