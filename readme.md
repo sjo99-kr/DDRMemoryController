@@ -4,13 +4,15 @@ A timing-aware, **multi-channel DDR Memory Controller** designed and verified in
 
 This project implements a hierarchical DDR controller architecture with per-channel, per-rank, and per-bank scheduling, along with a custom DDR4 Bus Functional Model (BFM) and a verification infrastructure including driver, monitor, and scoreboard.
 
+
+**Note**: The conditions of Refresh is needed to be modified, I'm working on this now (2026/06/13)
+
 ---
 
 
 ## 🏗 Architecture Overview
 <img width="1213" height="672" alt="image" src="https://github.com/user-attachments/assets/f93a4d25-b2bc-4200-8718-d41b12eb4995" />
 
-Note: The conditions of Refresh is needed to be modified, I'm working on this now (2026/06/13)
 
 
 ### Key Architectural Features
