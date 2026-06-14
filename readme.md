@@ -10,6 +10,8 @@ This project implements a hierarchical DDR controller architecture with per-chan
 ## 🏗 Architecture Overview
 <img width="1213" height="672" alt="image" src="https://github.com/user-attachments/assets/f93a4d25-b2bc-4200-8718-d41b12eb4995" />
 
+Note: The conditions of Refresh is needed to be modified, I'm working on this now (2026/06/13)
+
 
 ### Key Architectural Features
 
