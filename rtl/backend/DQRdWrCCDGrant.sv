@@ -73,6 +73,7 @@ module DQRdWrCCDGrant #(
     end
     assign chRdWrAvailabe = DQAvailable;
     //-------------------------------------------------------------------//
+`ifndef VERILATOR
 
 default clocking cb @(posedge clk); endclocking
 default disable iff (!rst);
@@ -116,7 +117,6 @@ endproperty
 assert property (p_available_flag_consistency)
     else $error("DQAvailable/cnt_flag inconsistent");
 
-`ifndef VERILATOR
 
 cover property (
     chRdWrACK && CCDType
