@@ -118,7 +118,6 @@ endproperty
 assert property (p_available_flag_consistency)
     else $error("DQAvailable/cnt_flag inconsistent");
 
-`endif
     
 cover property (
     chRdWrACK && CCDType
