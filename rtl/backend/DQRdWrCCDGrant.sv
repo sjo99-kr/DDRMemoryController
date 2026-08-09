@@ -9,8 +9,8 @@
 //      Functionality:
 //          - Starts a timing window upon RD/WR CAS acknowledgment (chRdWrACK).
 //          - Blocks further CAS issuance for:
-//              * tCCDS cycles (same bank-group access)
-//              * tCCDL cycles (different bank-group access)
+//              * tCCDS cycles (different bank-group access)
+//              * tCCDL cycles (same bank-group access)
 //          - Exposes DQ availability signal to ChannelController.
 //
 //      Notes:
@@ -71,8 +71,66 @@ module DQRdWrCCDGrant #(
             end
         end
     end
-    
     assign chRdWrAvailabe = DQAvailable;
     //-------------------------------------------------------------------//
 
 endmodule
+
+default clocking cb @(posedge clk); endclocking
+default disable iff (!rst);
+
+property p_ack_only_when_available;
+    chRdWrACK |-> chRdWrAvailabe;
+endproperty
+
+assert property (p_ack_only_when_available)
+    else $error("CAS ACK occurred while DQ is unavailable");
+
+property p_tccds_timer_load;
+    (chRdWrACK && CCDType)
+    |=> (cnt_flag &&
+         !DQAvailable &&
+         count == tCCDS-2);
+endproperty
+
+assert property (p_tccds_timer_load)
+    else $error("tCCDS timer loaded incorrectly");
+
+property p_count_decrement;
+    (cnt_flag && !chRdWrACK && count > 0)
+    |=> count == ($past(count) - 1);
+endproperty
+
+assert property (p_count_decrement)
+    else $error("CCD counter did not decrement correctly");
+
+property p_block_when_counter_active;
+    cnt_flag |-> !DQAvailable;
+endproperty
+
+assert property (p_block_when_counter_active)
+    else $error("DQ available while CCD timer is active");
+
+property p_available_flag_consistency;
+    DQAvailable == !cnt_flag;
+endproperty
+
+assert property (p_available_flag_consistency)
+    else $error("DQAvailable/cnt_flag inconsistent");
+
+`endif
+    
+cover property (
+    chRdWrACK && CCDType
+    ##1 cnt_flag
+    ##[1:$] DQAvailable
+);
+
+    
+cover property (
+    chRdWrACK && !CCDType
+    ##1 cnt_flag
+    ##[1:$] DQAvailable
+);
+
+
