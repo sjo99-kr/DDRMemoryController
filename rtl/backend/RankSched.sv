@@ -799,6 +799,8 @@ module RankSched #(
     end : SchedulingStage2
 
     property p_single_bank_issue;
+        @(posedge clk)
+        disable iff(!rst)
         $onehot0(fsmIssue);
     endproperty
             
