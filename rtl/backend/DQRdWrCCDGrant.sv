@@ -74,8 +74,6 @@ module DQRdWrCCDGrant #(
     assign chRdWrAvailabe = DQAvailable;
     //-------------------------------------------------------------------//
 
-endmodule
-
 default clocking cb @(posedge clk); endclocking
 default disable iff (!rst);
 
@@ -131,5 +129,8 @@ cover property (
     ##1 cnt_flag
     ##[1:$] DQAvailable
 );
+
+endmodule
+
 
 
