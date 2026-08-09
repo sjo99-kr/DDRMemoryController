@@ -349,12 +349,6 @@ module RankSched #(
                 !WriteReqQueFree[WritePopPtr])
             ) else
                 $fatal(2, "[%0t][ASSERT][RankSched][WRITE] Push/Pop overlap", $time);
-            property p_single_bank_issue;
-                $onehot0(fsmIssue);
-            endproperty
-            
-            assert property (p_single_bank_issue)
-            else $error("Multiple banks issued simultaneously");
         end
     end
 
@@ -804,6 +798,12 @@ module RankSched #(
         end
     end : SchedulingStage2
 
+    property p_single_bank_issue;
+        $onehot0(fsmIssue);
+    endproperty
+            
+    assert property (p_single_bank_issue)
+    else $error("Multiple banks issued simultaneously");
 
 //  ----------------------------------------------------------------------------------- //
     
