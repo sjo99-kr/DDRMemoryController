@@ -116,7 +116,8 @@ endproperty
 assert property (p_available_flag_consistency)
     else $error("DQAvailable/cnt_flag inconsistent");
 
-    
+`ifndef VERILATOR
+
 cover property (
     chRdWrACK && CCDType
     ##1 cnt_flag
@@ -129,6 +130,8 @@ cover property (
     ##1 cnt_flag
     ##[1:$] DQAvailable
 );
+
+`endif
 
 endmodule
 
