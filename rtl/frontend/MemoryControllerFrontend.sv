@@ -596,20 +596,141 @@ module MemoryControllerFrontend#(
 
 
 
+`ifdef ASSERTION
 
-///////////// 위에꺼 Response 수정하기 + Frontend 랑 Top MemoryController 엮이는 거 다시 확인하기
+    // ------------------------------------------------------------
+    // Arbitration mode consistency
+    // ------------------------------------------------------------
 
-`ifdef  ASSERTION
-    CacheArbitrationOverlapping : assert property ( @(posedge clk) disable iff (!rst_n)
-        noc_req.ar_valid |-> !(noc_req.aw_valid || noc_req.w_valid)
-    ) else $error("MC Frontend: Both RD and WR NoC Request comes together");
+    // A completed write assembly must select the write path.
+    WriteModeSelectsWritePath : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        arbitrationMode |-> (
+            mc_req.write &&
+            mc_req.req_data_valid
+        )
+    ) else $error(
+        "MC Frontend: write path was not selected during write arbitration"
+    );
 
-    WriteRequestArbitration : assert property ( @(posedge clk) disable iff (!rst_n) 
-        arbitrationMode |-> (mc_req.write)
-    ) else $error("MC Frontend: Write Arbitration Mode Error");
+    // Without a completed write assembly, the frontend must select
+    // the read path.
+    ReadModeSelectsReadPath : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        !arbitrationMode |-> (
+            !mc_req.write &&
+            !mc_req.req_data_valid
+        )
+    ) else $error(
+        "MC Frontend: read path was not selected during read arbitration"
+    );
 
-    ReadRequestArbitration : assert property ( @(posedge clk) disable iff (!rst_n)
-        (arbitrationMode) |-> (mc_req.write)
-    ) else $error("MC Frontend: (Read Request) Arbitration Mode Error");
+
+    // ------------------------------------------------------------
+    // Read-request arbitration
+    // ------------------------------------------------------------
+
+    // A cache-side read handshake must be issued to the backend
+    // in the same cycle.
+    ReadHandshakeGeneratesMCRequest : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        ReadRequestReceived |-> (
+            mc_req.req_valid &&
+            !mc_req.write
+        )
+    ) else $error(
+        "MC Frontend: accepted read request was not issued correctly"
+    );
+
+    // Verify that read-request information is forwarded without
+    // modification.
+    ReadRequestMetadataForwarding : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        ReadRequestReceived |-> (
+            mc_req.addr     == noc_req.ar.addr &&
+            mc_req.mem_addr == translatedAddr  &&
+            mc_req.mem_id   == noc_req.ar.id   &&
+            mc_req.mem_user == noc_req.ar.user
+        )
+    ) else $error(
+        "MC Frontend: read-request metadata mismatch"
+    );
+
+    // Read requests must not be accepted while the write path
+    // owns the backend request interface.
+    ReadBlockedDuringWriteBurst : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        arbitrationMode |-> (
+            !noc_resp.ar_ready &&
+            !ReadRequestReceived
+        )
+    ) else $error(
+        "MC Frontend: read request accepted during write burst"
+    );
+
+
+    // ------------------------------------------------------------
+    // Write-request arbitration
+    // ------------------------------------------------------------
+
+    // The backend write request is asserted only on the first
+    // beat of an assembled write burst.
+    WriteRequestValidOnFirstBeat : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        arbitrationMode && (WrPopCnt == 0) |-> (
+            mc_req.req_valid ==
+                WrAddrQueue[assembleWriteAddrIndex].fsm
+        )
+    ) else $error(
+        "MC Frontend: write request-valid mismatch on first beat"
+    );
+
+    // req_valid must be deasserted after the first write beat.
+    NoWriteRequestValidAfterFirstBeat : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        arbitrationMode && (WrPopCnt != 0) |->
+            !mc_req.req_valid
+    ) else $error(
+        "MC Frontend: write req_valid asserted after first beat"
+    );
+
+    // LAST must be asserted only on the final write-data beat.
+    WriteLastGeneration : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        arbitrationMode |-> (
+            mc_req.last == (WrPopCnt == BURSTTIMING)
+        )
+    ) else $error(
+        "MC Frontend: incorrect LAST generation for write burst"
+    );
+
+
+    // ------------------------------------------------------------
+    // Ready/valid consistency
+    // ------------------------------------------------------------
+
+    // Read acceptance must correspond exactly to an AR handshake
+    // targeting a valid rank FSM.
+    ReadRequestReceivedDefinition : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        ReadRequestReceived == (
+            noc_req.ar_valid &&
+            noc_resp.ar_ready &&
+            FSM_vector[FSM_index]
+        )
+    ) else $error(
+        "MC Frontend: ReadRequestReceived handshake mismatch"
+    );
+
+    // A read backend request must not be generated without an
+    // accepted cache-side read request.
+    NoSpuriousReadRequest : assert property (
+        @(posedge clk) disable iff (!rst_n)
+        mc_req.req_valid && !mc_req.write |->
+            ReadRequestReceived
+    ) else $error(
+        "MC Frontend: backend read request generated without AR handshake"
+    );
+
 `endif
 endmodule
